@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat de Classe en Temps Réel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Personnalisation de la barre de défilement pour un look plus clean */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .typing-dot {
+            animation: pulse-slow 1.4s infinite ease-in-out both;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        /* --- Effets rigolos (déclenchés par les admins) --- */
+        @keyframes fall {
+            from { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+            to { transform: translateY(110vh) rotate(720deg); opacity: .9; }
+        }
+        .fx-piece { position: fixed; top: 0; z-index: 100; pointer-events: none; animation: fall linear forwards; }
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0); }
+            20% { transform: translate(-8px, 4px) rotate(-.5deg); }
+            40% { transform: translate(8px, -4px) rotate(.5deg); }
+            60% { transform: translate(-6px, -3px); }
+            80% { transform: translate(6px, 3px); }
+        }
+        .fx-shake { animation: shake .4s infinite; }
+        @keyframes disco { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
+        .fx-disco { animation: disco 1s linear infinite; }
+        @keyframes spin360 { to { transform: rotate(360deg); } }
+        .fx-spin { animation: spin360 1.5s ease-in-out; }
+        .fx-flip { transform: rotate(180deg); transition: transform .8s; }
+    </style>
+</head>
+<body class="bg-slate-900 h-screen flex flex-col font-sans antialiased overflow-hidden">
+
+    <!-- Écran de connexion / création de compte -->
+    <div id="auth-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md transform transition-all">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-3 shadow-inner">💬</div>
+                <h2 class="text-2xl font-black text-slate-900">Bienvenue sur le Chat !</h2>
+                <p class="text-sm text-slate-500 mt-1">Connecte-toi avec ton ID ou crée ton compte pour rejoindre tes camarades.</p>
+            </div>
+            <div class="flex bg-slate-100 rounded-xl p-1 mb-4 text-sm font-bold">
+                <button id="tab-login" onclick="setAuthMode('login')" class="flex-1 py-2 rounded-lg transition bg-white shadow text-slate-900">Connexion</button>
+                <button id="tab-register" onclick="setAuthMode('register')" class="flex-1 py-2 rounded-lg transition text-slate-500">Créer un compte</button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Ton ID</label>
+                    <input type="text" id="id-input" placeholder="Ex: thomas42" autocomplete="username" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-800 font-medium">
+                </div>
+                <div id="pseudo-field" class="hidden">
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Ton Pseudo</label>
+                    <input type="text" id="username-input" placeholder="Ex: Thomas, Sarah..." maxlength="20" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-800 font-medium">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Mot de passe</label>
+                    <input type="password" id="pw-input" placeholder="••••••" autocomplete="current-password" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-800 font-medium">
+                </div>
+                <p id="auth-error" class="hidden text-sm text-red-600 font-medium"></p>
+                <button id="auth-submit" onclick="submitAuth()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-600/30 hover:bg-blue-700 hover:shadow-none transition duration-200">Se connecter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fenêtre modale générique (profil, panneau admin, aide...) -->
+    <div id="modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm hidden z-40 flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+        <div id="modal-body" class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6"></div>
+    </div>
+
+    <!-- Notifications -->
+    <div id="toasts" class="fixed bottom-24 right-4 z-[60] flex flex-col gap-2"></div>
+
+    <!-- Interface principale -->
+    <div class="flex h-full overflow-hidden">
+
+        <!-- Barre latérale : Salons -->
+        <div class="w-72 bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800">
+            <div class="p-5 border-b border-slate-800/80 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-600/30">📚</div>
+                <div>
+                    <h1 class="font-bold text-white text-base">Chat de Classe</h1>
+                    <span id="current-user-display" class="text-xs text-blue-400 font-medium"></span>
+                </div>
+            </div>
+
+            <div class="p-4 flex-1 overflow-y-auto space-y-6">
+                <div>
+                    <h2 class="text-xs uppercase tracking-wider text-slate-500 font-bold mb-3 px-2">Salons de discussion</h2>
+                    <div class="space-y-1">
+                        <button onclick="switchChannel('general')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-600 text-white font-semibold transition shadow-sm channel-btn" data-channel="general">
+                            <span class="text-blue-200">#</span> général
+                        </button>
+                        <button onclick="switchChannel('devoirs')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition channel-btn" data-channel="devoirs">
+                            <span class="text-slate-600">#</span> devoirs
+                        </button>
+                        <button onclick="switchChannel('memes')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition channel-btn" data-channel="memes">
+                            <span class="text-slate-600">#</span> loisirs-partage
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Membres en ligne -->
+                <div>
+                    <h2 class="text-xs uppercase tracking-wider text-slate-500 font-bold mb-3 px-2">En ligne (<span id="online-count">0</span>)</h2>
+                    <div id="online-list" class="space-y-0.5"></div>
+                </div>
+
+                <!-- Actions -->
+                <div class="space-y-1">
+                    <button onclick="openProfileEditor()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition text-sm">👤 Mon profil</button>
+                    <button onclick="openHelp()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition text-sm">❓ Commandes</button>
+                    <button id="admin-btn" onclick="openAdminPanel()" class="hidden w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 font-bold transition text-sm">👑 Panneau admin</button>
+                </div>
+            </div>
+
+            <!-- Pied de la sidebar avec info de connexion -->
+            <div class="p-4 border-t border-slate-800/80 bg-slate-950/30 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span class="text-xs text-slate-400 font-medium">Connecté en direct</span>
+                </div>
+                <button onclick="logout()" title="Changer de compte" class="text-slate-500 hover:text-slate-300 transition text-xs bg-slate-800 px-2.5 py-1 rounded-lg">Quitter</button>
+            </div>
+        </div>
+
+        <!-- Zone de discussion -->
+        <div id="chat-zone" class="flex-1 flex flex-col bg-slate-50 relative overflow-hidden">
+            <!-- Header du salon -->
+            <div class="px-6 py-4 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between shadow-xs z-10">
+                <div class="flex items-center gap-3">
+                    <h2 id="active-channel-title" class="text-lg font-bold text-slate-800"># général</h2>
+                    <span class="text-xs bg-slate-100 text-slate-500 font-medium px-2.5 py-1 rounded-full border border-slate-200">Temps réel actif</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="search-input" placeholder="🔍 Rechercher..." class="w-44 bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition">
+                    <button id="sound-btn" onclick="toggleSound()" title="Son des notifications" class="bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 text-sm hover:bg-slate-200 transition">🔔</button>
+                </div>
+            </div>
+
+            <!-- Annonce épinglée -->
+            <div id="announce-banner" class="hidden px-6 py-2 bg-amber-100 border-b border-amber-300 text-amber-900 text-sm flex items-center gap-2">
+                <span>📢</span>
+                <span id="announce-text" class="font-semibold flex-1"></span>
+                <span id="announce-by" class="text-xs opacity-70"></span>
+                <button id="announce-clear" onclick="clearAnnouncement()" class="hidden text-xs bg-amber-200 hover:bg-amber-300 rounded-lg px-2 py-0.5">✕</button>
+            </div>
+
+            <!-- Messages Container -->
+            <div id="messages-container" class="flex-1 p-6 overflow-y-auto space-y-4">
+                <!-- Les messages s'affichent ici -->
+            </div>
+
+            <!-- Indicateur de frappe -->
+            <div id="typing-indicator" class="px-6 py-1.5 text-xs text-slate-400 italic hidden flex items-center gap-2 bg-slate-100/50 border-t border-slate-200/60">
+                <div class="flex gap-1 items-center">
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full typing-dot"></span>
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full typing-dot"></span>
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full typing-dot"></span>
+                </div>
+                <span id="typing-text">Quelqu'un écrit...</span>
+            </div>
+
+            <!-- Formulaire d'envoi -->
+            <div class="p-4 border-t border-slate-200 bg-white shadow-lg">
+                <form id="message-form" onsubmit="sendMessage(event)" class="flex items-center gap-3 max-w-5xl mx-auto">
+                    <div class="flex-1 relative flex items-center">
+                        <input type="text" id="message-input" maxlength="500" placeholder="Écris ton message ici... (/help pour les commandes)" class="w-full bg-slate-100 border border-slate-200 rounded-2xl px-5 py-3.5 pr-12 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-sm disabled:opacity-60" autocomplete="off" oninput="handleTyping()">
+                    </div>
+                    <button type="submit" class="bg-blue-600 text-white px-6 py-3.5 rounded-2xl font-bold shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-none transition duration-200 flex items-center gap-2">
+                        <span>Envoyer</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+                            <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Firebase (Realtime Database) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, push, set, onValue, query, limitToLast, remove, onDisconnect, get, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAI54Qv3XeLkwsJxHCICaLFrh9tuhPCPo",
+            authDomain: "chat-classe-ddafc.firebaseapp.com",
+            databaseURL: "https://chat-classe-ddafc-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "chat-classe-ddafc",
+            storageBucket: "chat-classe-ddafc.firebasestorage.app",
+            messagingSenderId: "509741806327",
+            appId: "1:509741806327:web:9afa9a30df2d81161759f2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        /* ===================== CONSTANTES ===================== */
+        const ADMIN_ID = "ismagoat";
+        // Empreinte SHA-256 de "chatclasse:<id>:<mot de passe>" (le mot de passe admin n'apparaît pas en clair)
+        const ADMIN_HASH = "f63d9ee7ebcddff85eea1a0fcc53c6a7fcc9722b2929f323bd0f05efcb85ea03";
+        const channelLabels = { general: "général", devoirs: "devoirs", memes: "loisirs-partage" };
+        const AVATARS = ["🙂","😎","🤓","🥳","🐱","🐶","🦊","🐼","🐸","🦄","🚀","⚽","🎮","🎸","🍕","👻"];
+        const COLORS = ["#475569","#2563eb","#059669","#d97706","#dc2626","#7c3aed","#db2777","#0d9488"];
+        const QUICK = ["👍","❤️","😂","😮","🔥"];
+        const ID_RE = /^[a-z0-9_-]{3,20}$/;
+        const PSEUDO_RE = /^[\p{L}\p{N} _-]{2,20}$/u;
+        const INP = "w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm";
+        const LBL = "block text-xs font-bold uppercase tracking-wider text-slate-500 mt-3 mb-1";
+        const BTN = "bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-blue-700 transition";
+
+        /* ===================== ÉTAT ===================== */
+        let currentUser = localStorage.getItem("chat_username") || "";
+        let currentId = localStorage.getItem("chat_userid") || "";
+        let currentHash = localStorage.getItem("chat_hash") || "";
+        let currentChannel = "general";
+        let typingTimeout = null;
+        let isAdmin = false;
+        let me = null;
+        let profiles = {};
+        let presence = {};
+        let lastMessages = [];
+        let searchTerm = "";
+        let stickBottom = true;
+        let unsubMessages = null;
+        let unsubTyping = null;
+        let booted = false;
+        let authMode = "login";
+        let modalKind = null;
+        let draft = {};
+        let lastSent = 0;
+        let unread = 0;
+        let soundOn = localStorage.getItem("chat_sound") !== "off";
+        const baseTitle = document.title;
+
+        /* ===================== OUTILS ===================== */
+        const $ = (id) => document.getElementById(id);
+        const R = (p) => ref(db, p);
+        const normId = (s) => (s || "").trim().toLowerCase();
+        const canMod = () => isAdmin || (me && me.role === "mod");
+        const pseudoTaken = (pseudo, exceptId) => Object.entries(profiles).some(([id, p]) => id !== exceptId && (p.pseudo || "").toLowerCase() === pseudo.toLowerCase());
+
+        async function sha256(s) {
+            const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+            return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+        }
+        const hashPw = (id, pw) => sha256(`chatclasse:${id}:${pw}`);
+
+        function escapeHtml(text) {
+            return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        }
+        const esc = escapeHtml;
+
+        function toast(msg) {
+            const t = document.createElement("div");
+            t.className = "bg-slate-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg border border-slate-700";
+            t.innerText = msg;
+            $("toasts").appendChild(t);
+            setTimeout(() => t.remove(), 3500);
+        }
+
+        let audioCtx;
+        function playSound() {
+            if (!soundOn) return;
+            try {
+                audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+                const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+                o.connect(g); g.connect(audioCtx.destination);
+                o.frequency.value = 880;
+                g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.25);
+                o.start(); o.stop(audioCtx.currentTime + 0.25);
+            } catch (e) {}
+        }
+        window.toggleSound = () => {
+            soundOn = !soundOn;
+            localStorage.setItem("chat_sound", soundOn ? "on" : "off");
+            $("sound-btn").innerText = soundOn ? "🔔" : "🔕";
+        };
+
+        function badge(p) {
+            return p && p.role === "admin" ? " 👑" : p && p.role === "mod" ? " 🛡️" : "";
+        }
+
+        /* ===================== AUTHENTIFICATION ===================== */
+        const tabCls = (a) => "flex-1 py-2 rounded-lg transition " + (a ? "bg-white shadow text-slate-900" : "text-slate-500");
+        function authError(msg) {
+            const e = $("auth-error");
+            e.innerText = msg;
+            e.classList.toggle("hidden", !msg);
+        }
+        window.setAuthMode = (m) => {
+            authMode = m;
+            $("pseudo-field").classList.toggle("hidden", m !== "register");
+            $("auth-submit").innerText = m === "login" ? "Se connecter" : "Créer mon compte";
+            $("tab-login").className = tabCls(m === "login");
+            $("tab-register").className = tabCls(m === "register");
+            authError("");
+        };
+
+        async function checkCreds(id, pw) {
+            if (!ID_RE.test(id)) throw new Error("ID invalide (3 à 20 caractères : lettres, chiffres, _ ou -).");
+            if (!pw) throw new Error("Entre ton mot de passe.");
+            const hash = await hashPw(id, pw);
+            return { hash, admin: id === ADMIN_ID && hash === ADMIN_HASH };
+        }
+
+        async function doLogin(id, pw) {
+            const { hash, admin } = await checkCreds(id, pw);
+            const cred = (await get(R("credentials/" + id))).val();
+            if (!admin && (!cred || cred.hash !== hash)) throw new Error("ID ou mot de passe incorrect.");
+            let prof = (await get(R("profiles/" + id))).val();
+            if (admin) {
+                if (!cred || cred.hash !== hash) await set(R("credentials/" + id), { hash });
+                if (!prof) prof = { pseudo: "Ismagoat", avatar: "👑", color: "#d97706", bio: "", createdAt: Date.now() };
+                prof.role = "admin";
+                prof.banned = false;
+                prof.muted = false;
+                await set(R("profiles/" + id), prof);
+            }
+            if (!prof) throw new Error("Profil introuvable.");
+            if (prof.banned) throw new Error("🚫 Ce compte a été banni.");
+            return { id, hash };
+        }
+
+        async function doRegister(id, pw, pseudo) {
+            const { admin } = await checkCreds(id, pw);
+            if (id === ADMIN_ID) {
+                if (!admin) throw new Error("Cet ID est réservé.");
+                return doLogin(id, pw);
+            }
+            if (pw.length < 4) throw new Error("Mot de passe trop court (4 caractères minimum).");
+            if (!PSEUDO_RE.test(pseudo)) throw new Error("Pseudo invalide (2 à 20 caractères, sans symboles spéciaux).");
+            if ((await get(R("credentials/" + id))).exists()) throw new Error("Cet ID est déjà pris.");
+            const all = (await get(R("profiles"))).val() || {};
+            if (Object.values(all).some(p => (p.pseudo || "").toLowerCase() === pseudo.toLowerCase())) throw new Error("Ce pseudo est déjà utilisé.");
+            const hash = await hashPw(id, pw);
+            await set(R("credentials/" + id), { hash });
+            await set(R("profiles/" + id), {
+                pseudo, avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)], color: COLORS[1],
+                bio: "", role: "member", createdAt: Date.now()
+            });
+            return { id, hash };
+        }
+
+        window.submitAuth = async () => {
+            const id = normId($("id-input").value);
+            const pw = $("pw-input").value;
+            const pseudo = $("username-input").value.trim();
+            authError("");
+            try {
+                const user = authMode === "register" ? await doRegister(id, pw, pseudo) : await doLogin(id, pw);
+                startSession(user.id, user.hash);
+            } catch (err) {
+                authError(err.message);
+            }
+        };
+        window.login = window.submitAuth;
+
+        function startSession(id, hash) {
+            currentId = id;
+            currentHash = hash;
+            isAdmin = id === ADMIN_ID && hash === ADMIN_HASH;
+            localStorage.setItem("chat_userid", id);
+            localStorage.setItem("chat_hash", hash);
+            $("auth-modal").classList.add("hidden");
+            boot();
+        }
+
+        window.logout = async () => {
+            try { if (currentId) await remove(R("presence/" + currentId)); } catch (e) {}
+            ["chat_username", "chat_userid", "chat_hash"].forEach(k => localStorage.removeItem(k));
+            location.reload();
+        };
+
+        window.onload = async () => {
+            $("auth-modal").querySelectorAll("input").forEach(i => i.addEventListener("keydown", (e) => { if (e.key === "Enter") window.submitAuth(); }));
+            $("sound-btn").innerText = soundOn ? "🔔" : "🔕";
+            if (currentId && currentHash) {
+                try {
+                    const admin = currentId === ADMIN_ID && currentHash === ADMIN_HASH;
+                    const cred = (await get(R("credentials/" + currentId))).val();
+                    if (admin || (cred && cred.hash === currentHash)) {
+                        startSession(currentId, currentHash);
+                        return;
+                    }
+                } catch (e) {}
+            }
+            $("auth-modal").classList.remove("hidden");
+        };
+
+        function boot() {
+            if (booted) return;
+            booted = true;
+            listenProfiles();
+            setupPresence();
+            listenAnnouncement();
+            listenEffects();
+            loadMessages();
+            setupTypingListener();
+        }
+
+        /* ===================== PROFILS & PRÉSENCE ===================== */
+        function listenProfiles() {
+            onValue(R("profiles"), (snap) => {
+                profiles = snap.val() || {};
+                me = profiles[currentId];
+                if (!me) { alert("Ton compte n'existe plus."); window.logout(); return; }
+                if (me.banned && !isAdmin) { alert("🚫 Tu as été banni."); window.logout(); return; }
+                currentUser = me.pseudo;
+                localStorage.setItem("chat_username", currentUser);
+                updateUserUI();
+                renderMessages();
+                renderMembers();
+                refreshModal();
+            });
+        }
+
+        function updateUserUI() {
+            $("current-user-display").innerText = `${me.avatar || "🙂"} @${currentUser}${isAdmin ? " 👑" : me.role === "mod" ? " 🛡️" : ""}`;
+            $("admin-btn").classList.toggle("hidden", !canMod());
+            const blocked = !!(me.muted && !isAdmin);
+            $("message-input").disabled = blocked;
+            $("message-input").placeholder = blocked ? "🔇 Tu as été rendu muet par un admin" : "Écris ton message ici... (/help pour les commandes)";
+        }
+
+        function setupPresence() {
+            onValue(R(".info/connected"), (s) => {
+                if (s.val() === true) {
+                    const pr = R("presence/" + currentId);
+                    onDisconnect(pr).remove();
+                    set(pr, { pseudo: currentUser, ts: Date.now() });
+                }
+            });
+            onValue(R("presence"), (s) => { presence = s.val() || {}; renderMembers(); });
+        }
+
+        function renderMembers() {
+            const ids = Object.keys(presence);
+            $("online-count").innerText = ids.length;
+            $("online-list").innerHTML = ids.map(id => {
+                const p = profiles[id] || {};
+                return `<button data-prof="${esc(id)}" class="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-800/60 text-left text-sm">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>${esc(p.avatar || "🙂")}</span>
+                    <span class="truncate">${esc(p.pseudo || id)}</span><span>${badge(p)}</span></button>`;
+            }).join("");
+        }
+        $("online-list").addEventListener("click", (e) => {
+            const b = e.target.closest("[data-prof]");
+            if (b) viewProfile(b.dataset.prof);
+        });
+
+        /* ===================== SALONS & MESSAGES ===================== */
+        window.switchChannel = (channel) => {
+            if (currentId) remove(R(`typing/${currentChannel}/${currentId}`));
+            currentChannel = channel;
+            $("active-channel-title").innerText = `# ${channelLabels[channel] || channel}`;
+
+            document.querySelectorAll('.channel-btn').forEach(btn => {
+                if(btn.dataset.channel === channel) {
+                    btn.className = "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-600 text-white font-semibold transition shadow-sm channel-btn";
+                    btn.querySelector('span').className = "text-blue-200";
+                } else {
+                    btn.className = "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition channel-btn";
+                    btn.querySelector('span').className = "text-slate-600";
+                }
+            });
+
+            loadMessages();
+            setupTypingListener();
+        };
+
+        const isMine = (m) => m.userId ? m.userId === currentId : m.user === currentUser;
+        const displayName = (m) => (m.userId && profiles[m.userId] && profiles[m.userId].pseudo) || m.user || "Anonyme";
+        const mentionsMe = (t) => currentUser && (t || "").toLowerCase().includes("@" + currentUser.toLowerCase());
+
+        function loadMessages() {
+            if (unsubMessages) unsubMessages();
+            lastMessages = [];
+            stickBottom = true;
+            $("messages-container").innerHTML = "";
+            let first = true;
+
+            const messagesRef = query(R('channels/' + currentChannel), limitToLast(100));
+            unsubMessages = onValue(messagesRef, (snapshot) => {
+                const prevKeys = new Set(lastMessages.map(m => m.key));
+                lastMessages = [];
+                snapshot.forEach((child) => { lastMessages.push({ ...child.val(), key: child.key }); });
+
+                if (!first) {
+                    const fresh = lastMessages.filter(m => !prevKeys.has(m.key) && !isMine(m) && m.type !== "system");
+                    if (fresh.length) {
+                        playSound();
+                        if (fresh.some(m => mentionsMe(m.text))) toast("🔔 Tu as été mentionné !");
+                        if (document.hidden) { unread += fresh.length; document.title = `(${unread}) ${baseTitle}`; }
+                    }
+                }
+                first = false;
+                renderMessages();
+            });
+        }
+        document.addEventListener("visibilitychange", () => { if (!document.hidden) { unread = 0; document.title = baseTitle; } });
+
+        function formatText(t) {
+            let s = escapeHtml(t);
+            s = s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline">$1</a>');
+            s = s.replace(/(^|\s)@([\p{L}\p{N}_-]{2,20})/gu, '$1<span class="bg-amber-200 text-amber-900 rounded px-1 font-semibold">@$2</span>');
+            s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+            return s;
+        }
+
+        function buildMessage(m) {
+            const div = document.createElement("div");
+            const date = new Date(m.createdAt || Date.now());
+            const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const name = displayName(m);
+            const isMe = isMine(m);
+            const p = profiles[m.userId] || {};
+            const canDel = isMe || canMod();
+            const canEdit = isMe && m.type !== "system" && m.type !== "action";
+
+            const actions = (m.type === "system" ? [] : QUICK.map(e => `<button data-act="react" data-key="${m.key}" data-emoji="${e}" class="hover:scale-125 transition px-0.5">${e}</button>`))
+                .concat(canEdit ? [`<button data-act="edit" data-key="${m.key}" title="Modifier" class="px-0.5">✏️</button>`] : [])
+                .concat(canDel ? [`<button data-act="del" data-key="${m.key}" title="Supprimer" class="px-0.5">🗑️</button>`] : []).join("");
+            const actionsBar = actions ? `<div class="hidden group-hover:flex absolute -top-4 ${isMe ? 'left-0' : 'right-0'} bg-white border border-slate-200 rounded-full shadow px-1.5 py-0.5 gap-0.5 text-sm z-10">${actions}</div>` : "";
+
+            if (m.type === "system") {
+                div.className = "group relative text-center text-xs text-slate-500 italic my-1";
+                div.innerHTML = `<span class="relative inline-block px-2">${formatText(m.text || "")} <span class="text-[10px] text-slate-400">${timeString}</span>${actionsBar}</span>`;
+                return div;
+            }
+
+            const reacts = Object.entries(m.reactions || {}).map(([emo, users]) => {
+                const n = Object.keys(users || {}).length;
+                if (!n) return "";
+                const on = users && users[currentId];
+                return `<button data-act="react" data-key="${m.key}" data-emoji="${esc(emo)}" class="text-xs px-2 py-0.5 rounded-full border ${on ? 'bg-blue-100 border-blue-400 text-blue-700' : 'bg-white border-slate-200 text-slate-600'} hover:scale-105 transition">${esc(emo)} ${n}</button>`;
+            }).join("");
+
+            const body = m.type === "action"
+                ? `<p class="italic break-words">* ${esc(name)} ${formatText(m.text || "")}</p>`
+                : `<p class="break-words leading-relaxed">${formatText(m.text || "")}${m.edited ? ' <span class="text-[10px] opacity-60">(modifié)</span>' : ''}</p>`;
+            const nameHtml = m.userId
+                ? `<button data-prof="${esc(m.userId)}" class="text-xs font-bold hover:underline" style="color:${esc(p.color || '#475569')}">${esc(name)}</button>`
+                : `<span class="text-xs font-bold text-slate-600">${esc(name)}</span>`;
+
+            div.className = `group flex flex-col ${isMe ? 'items-end' : 'items-start'} mb-2`;
+            div.innerHTML = `
+                <div class="flex items-center gap-2 mb-1 px-1">
+                    <span>${esc(p.avatar || "")}</span>
+                    ${nameHtml}<span class="text-xs">${badge(p)}</span>
+                    <span class="text-[10px] text-slate-400">${timeString}</span>
+                </div>
+                <div class="relative max-w-lg px-4 py-2.5 rounded-2xl shadow-xs text-sm ${isMe ? 'bg-blue-600 text-white rounded-br-xs' : 'bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs'}${p.role === 'admin' ? ' ring-2 ring-amber-400' : ''}">
+                    ${body}${actionsBar}
+                </div>
+                ${reacts ? `<div class="flex flex-wrap gap-1 mt-1">${reacts}</div>` : ""}
+            `;
+            return div;
+        }
+
+        function renderMessages() {
+            const container = $("messages-container");
+            const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+            let list = lastMessages;
+            if (searchTerm) list = list.filter(m => (m.text || "").toLowerCase().includes(searchTerm) || displayName(m).toLowerCase().includes(searchTerm));
+            container.innerHTML = "";
+
+            if (!list.length) {
+                container.innerHTML = searchTerm
+                    ? `<div class="h-full flex items-center justify-center text-slate-400 text-sm">Aucun résultat pour « ${esc(searchTerm)} »</div>`
+                    : `
+                    <div class="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400">
+                        <div class="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center text-2xl mb-3">📭</div>
+                        <p class="font-medium text-slate-600">Aucun message pour l'instant</p>
+                        <p class="text-xs text-slate-400 mt-1">Sois le premier à briser la glace dans ce salon !</p>
+                    </div>`;
+                return;
+            }
+            list.forEach(m => container.appendChild(buildMessage(m)));
+            if (stickBottom || nearBottom) { container.scrollTop = container.scrollHeight; stickBottom = false; }
+        }
+
+        $("search-input").addEventListener("input", (e) => { searchTerm = e.target.value.trim().toLowerCase(); renderMessages(); });
+
+        $("messages-container").addEventListener("click", (e) => {
+            const b = e.target.closest("[data-act],[data-prof]");
+            if (!b) return;
+            if (b.dataset.prof) return viewProfile(b.dataset.prof);
+            const key = b.dataset.key;
+            if (b.dataset.act === "react") toggleReaction(key, b.dataset.emoji);
+            if (b.dataset.act === "edit") editMessage(key);
+            if (b.dataset.act === "del") deleteMessage(key);
+        });
+
+        async function toggleReaction(key, emoji) {
+            try {
+                const m = lastMessages.find(x => x.key === key);
+                const has = m && m.reactions && m.reactions[emoji] && m.reactions[emoji][currentId];
+                const r = R(`channels/${currentChannel}/${key}/reactions/${emoji}/${currentId}`);
+                if (has) await remove(r); else await set(r, true);
+            } catch (e) { toast("Erreur : " + e.message); }
+        }
+        async function editMessage(key) {
+            const m = lastMessages.find(x => x.key === key);
+            if (!m) return;
+            const t = prompt("Modifier le message :", m.text);
+            if (t === null || !t.trim()) return;
+            try { await update(R(`channels/${currentChannel}/${key}`), { text: t.trim(), edited: true }); } catch (e) { toast("Erreur : " + e.message); }
+        }
+        async function deleteMessage(key) {
+            if (!confirm("Supprimer ce message ?")) return;
+            try { await remove(R(`channels/${currentChannel}/${key}`)); } catch (e) { toast("Erreur : " + e.message); }
+        }
+
+        /* ===================== INDICATEUR DE FRAPPE ===================== */
+        // Fonctionnalité d'écriture en direct (Typing Indicator)
+        window.handleTyping = () => {
+            if (!currentId) return;
+            const typingRef = R(`typing/${currentChannel}/${currentId}`);
+            set(typingRef, true);
+
+            // Supprime le statut après 2 secondes d'inactivité de frappe
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                remove(typingRef);
+            }, 2000);
+        };
+
+        function setupTypingListener() {
+            if (unsubTyping) unsubTyping();
+            const typingRef = R(`typing/${currentChannel}`);
+            unsubTyping = onValue(typingRef, (snapshot) => {
+                const typingIndicator = $("typing-indicator");
+                const typingText = $("typing-text");
+
+                if (!snapshot.exists()) {
+                    typingIndicator.classList.add("hidden");
+                    return;
+                }
+
+                const typingUsers = [];
+                snapshot.forEach((child) => {
+                    if (child.key !== currentId) typingUsers.push((profiles[child.key] && profiles[child.key].pseudo) || child.key);
+                });
+
+                if (typingUsers.length > 0) {
+                    typingIndicator.classList.remove("hidden");
+                    if (typingUsers.length === 1) {
+                        typingText.innerText = `${typingUsers[0]} est en train d'écrire...`;
+                    } else {
+                        typingText.innerText = `Plusieurs personnes écrivent...`;
+                    }
+                } else {
+                    typingIndicator.classList.add("hidden");
+                }
+            });
+        }
+
+        /* ===================== ENVOI & COMMANDES ===================== */
+        async function postMessage(text, type) {
+            const newMessageRef = push(R('channels/' + currentChannel));
+            await set(newMessageRef, {
+                text: text,
+                user: currentUser,
+                userId: currentId,
+                createdAt: Date.now(),
+                ...(type ? { type } : {})
+            });
+        }
+
+        window.sendMessage = async (e) => {
+            e.preventDefault();
+            const textInput = $("message-input");
+            const text = textInput.value.trim();
+
+            if (!text || !currentId) return;
+            if (me && me.muted && !isAdmin) { toast("🔇 Tu es muet, tu ne peux pas écrire."); return; }
+            if (Date.now() - lastSent < 700) { toast("⏳ Doucement, un message à la fois !"); return; }
+
+            // Nettoyer l'indicateur de frappe immédiatement à l'envoi
+            remove(R(`typing/${currentChannel}/${currentId}`));
+
+            try {
+                lastSent = Date.now();
+                if (text.startsWith("/")) {
+                    await handleCommand(text);
+                } else {
+                    await postMessage(text);
+                }
+                textInput.value = "";
+                stickBottom = true;
+            } catch (err) {
+                alert("Erreur lors de l'envoi du message : " + err.message);
+            }
+        };
+
+        const BALL = ["Oui, carrément 😎", "Non, désolé 😅", "Peut-être... 🤔", "Demande à ton prof 📚", "Absolument ! 🎉", "J'en doute 🙃", "100 % sûr ✅", "Les astres disent non 🔮"];
+        const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+        async function handleCommand(raw) {
+            const [cmd, ...rest] = raw.slice(1).split(/\s+/);
+            const c = cmd.toLowerCase();
+            const arg = rest.join(" ");
+            const adminCmds = ["clear", "announce", "confetti", "rain", "shake", "disco", "spin", "flip", "ban", "unban", "mute", "unmute", "rename", "mod", "unmod"];
+            if (adminCmds.includes(c)) {
+                const modOk = (c === "mute" || c === "unmute") && canMod();
+                if (!isAdmin && !modOk) { toast("👑 Commande réservée aux admins."); return; }
+            }
+            switch (c) {
+                case "help": openHelp(); return;
+                case "roll": { const n = Math.max(2, parseInt(arg) || 6); return postMessage(`🎲 ${currentUser} lance un dé à ${n} faces : ${1 + Math.floor(Math.random() * n)}`, "system"); }
+                case "flip": return postMessage(`🪙 ${currentUser} lance une pièce : ${Math.random() < .5 ? "PILE" : "FACE"}`, "system");
+                case "8ball": return postMessage(`🔮 « ${arg || "?"} » → ${pick(BALL)}`, "system");
+                case "me": return postMessage(arg || "fait quelque chose de mystérieux", "action");
+                case "shrug": return postMessage(`${arg} ¯\\_(ツ)_/¯`.trim());
+                case "tableflip": return postMessage("(╯°□°）╯︵ ┻━┻");
+                case "unflip": return postMessage("┬─┬ ノ( ゜-゜ノ)");
+                case "clear": if (confirm("Vider tout le salon ?")) await remove(R("channels/" + currentChannel)); return;
+                case "announce": return setAnnouncement(arg);
+                case "confetti": case "rain": case "shake": case "disco": case "spin": return fireEffect(c, arg);
+                case "flip" + "page": return fireEffect("flip");
+                case "ban": return setFlag(normId(arg), "banned", true);
+                case "unban": return setFlag(normId(arg), "banned", false);
+                case "mute": return setFlag(normId(arg), "muted", true);
+                case "unmute": return setFlag(normId(arg), "muted", false);
+                case "mod": return setRole(normId(arg), "mod");
+                case "unmod": return setRole(normId(arg), "member");
+                case "rename": return renameUser(normId(rest[0]), rest.slice(1).join(" "));
+                default: toast("Commande inconnue. Tape /help.");
+            }
+        }
+
+        /* ===================== ACTIONS D'ADMINISTRATION ===================== */
+        function guardTarget(id, needAdmin = true) {
+            if (needAdmin && !isAdmin) { toast("👑 Réservé aux admins."); return false; }
+            if (!needAdmin && !canMod()) { toast("🛡️ Réservé aux modérateurs."); return false; }
+            if (!profiles[id]) { toast("Membre introuvable : " + id); return false; }
+            if (id === ADMIN_ID) { toast("Impossible sur l'administrateur."); return false; }
+            return true;
+        }
+        async function setFlag(id, flag, val) {
+            if (!guardTarget(id, flag === "banned")) return;
+            await update(R("profiles/" + id), { [flag]: val });
+            toast(`${profiles[id].pseudo} : ${flag === "banned" ? (val ? "🚫 banni" : "✅ débanni") : (val ? "🔇 muet" : "🔊 démuté")}`);
+        }
+        async function setRole(id, role) {
+            if (!guardTarget(id)) return;
+            await update(R("profiles/" + id), { role });
+            toast(`${profiles[id].pseudo} est maintenant ${role === "mod" ? "modérateur 🛡️" : "membre"}`);
+        }
+        async function renameUser(id, pseudo) {
+            if (!guardTarget(id)) return;
+            if (!PSEUDO_RE.test(pseudo || "")) { toast("Pseudo invalide."); return; }
+            if (pseudoTaken(pseudo, id)) { toast("Pseudo déjà pris."); return; }
+            await update(R("profiles/" + id), { pseudo });
+            toast("✏️ Pseudo modifié.");
+        }
+        async function resetPw(id) {
+            if (!guardTarget(id)) return;
+            const pw = prompt("Nouveau mot de passe pour " + profiles[id].pseudo + " (4 caractères min.) :");
+            if (!pw || pw.length < 4) return;
+            await set(R("credentials/" + id), { hash: await hashPw(id, pw) });
+            toast("🔑 Mot de passe réinitialisé.");
+        }
+        async function deleteAccount(id) {
+            if (!guardTarget(id)) return;
+            if (!confirm("Supprimer définitivement le compte de " + profiles[id].pseudo + " ?")) return;
+            await remove(R("profiles/" + id));
+            await remove(R("credentials/" + id));
+            await remove(R("presence/" + id));
+            toast("🗑️ Compte supprimé.");
+        }
+        async function setAnnouncement(text) {
+            if (!isAdmin) return;
+            if (!text) { toast("Écris le texte de l'annonce."); return; }
+            await set(R("announcement"), { text, by: currentUser, ts: Date.now() });
+        }
+        window.clearAnnouncement = async () => { if (isAdmin) await remove(R("announcement")); };
+
+        function listenAnnouncement() {
+            onValue(R("announcement"), (s) => {
+                const v = s.val();
+                const b = $("announce-banner");
+                if (!v || !v.text) { b.classList.add("hidden"); return; }
+                $("announce-text").innerText = v.text;
+                $("announce-by").innerText = "— " + v.by;
+                $("announce-clear").classList.toggle("hidden", !isAdmin);
+                b.classList.remove("hidden");
+            });
+        }
+
+        /* ===================== EFFETS RIGOLOS ===================== */
+        async function fireEffect(type, text) {
+            if (!isAdmin) return;
+            await set(R("effects/latest"), { type, text: text || "", by: currentUser, ts: Date.now() });
+        }
+        let firstEffect = true;
+        function listenEffects() {
+            onValue(R("effects/latest"), (s) => {
+                const v = s.val();
+                if (firstEffect) { firstEffect = false; return; }
+                if (v && Date.now() - v.ts < 15000) runEffect(v);
+            });
+        }
+        function rainOf(list, n) {
+            for (let i = 0; i < n; i++) {
+                const el = document.createElement("div");
+                el.className = "fx-piece";
+                el.innerText = pick(list);
+                el.style.left = Math.random() * 100 + "vw";
+                el.style.fontSize = 18 + Math.random() * 28 + "px";
+                el.style.animationDuration = 2.5 + Math.random() * 3 + "s";
+                el.style.animationDelay = Math.random() * 1.5 + "s";
+                document.body.appendChild(el);
+                setTimeout(() => el.remove(), 8000);
+            }
+        }
+        function timedClass(el, cls, ms) { el.classList.add(cls); setTimeout(() => el.classList.remove(cls), ms); }
+        function runEffect(v) {
+            toast(`👑 ${v.by} a lancé : ${v.type}`);
+            switch (v.type) {
+                case "confetti": rainOf(["🎉", "🎊", "✨", "🥳", "🎈"], 90); break;
+                case "rain": {
+                    const list = v.text ? [...v.text].filter(ch => ch.trim()) : ["🍕", "🍔", "🍟", "🌮", "🍩"];
+                    rainOf(list.length ? list : ["🍕"], 70);
+                    break;
+                }
+                case "shake": timedClass(document.body, "fx-shake", 3000); break;
+                case "disco": timedClass(document.body, "fx-disco", 6000); break;
+                case "spin": timedClass($("messages-container"), "fx-spin", 1600); break;
+                case "flip": timedClass(document.body, "fx-flip", 5000); break;
+            }
+        }
+
+        /* ===================== FENÊTRES (PROFIL, ADMIN, AIDE) ===================== */
+        function openModal(kind, html) {
+            modalKind = kind;
+            $("modal-body").innerHTML = html;
+            $("modal").classList.remove("hidden");
+        }
+        window.closeModal = () => { $("modal").classList.add("hidden"); modalKind = null; };
+        function refreshModal() {
+            if (modalKind === "admin" && !(document.activeElement && document.activeElement.id === "ad-ann")) renderAdminPanel();
+        }
+        const modalHead = (title) => `<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-black text-slate-900">${title}</h3><button data-m="close" class="text-slate-400 hover:text-slate-700 text-xl">✕</button></div>`;
+
+        window.openHelp = () => {
+            const rows = [
+                ["/roll [n]", "Lance un dé"], ["/flip", "Pile ou face"], ["/8ball question", "Boule magique"],
+                ["/me action", "Message d'action"], ["/shrug texte", "¯\\_(ツ)_/¯"], ["/tableflip · /unflip", "Retourne la table"]
+            ];
+            const adm = [
+                ["/announce texte", "Annonce épinglée"], ["/clear", "Vide le salon"],
+                ["/confetti · /rain [emoji] · /shake · /disco · /spin · /flippage", "Effets pour tout le monde"],
+                ["/mute · /unmute id", "Rendre muet (modos inclus)"], ["/ban · /unban id", "Bannir"],
+                ["/rename id pseudo", "Renommer un membre"], ["/mod · /unmod id", "Nommer / retirer un modo"]
+            ];
+            const line = ([a, b]) => `<div class="flex justify-between gap-4 py-1.5 border-b border-slate-100 text-sm"><code class="text-blue-700 font-semibold">${esc(a)}</code><span class="text-slate-500 text-right">${esc(b)}</span></div>`;
+            openModal("help", modalHead("❓ Commandes") + rows.map(line).join("") +
+                (isAdmin ? `<h4 class="${LBL}">👑 Admin</h4>` + adm.map(line).join("") : "") +
+                `<p class="text-xs text-slate-400 mt-3">Astuces : **gras**, @pseudo pour mentionner, survole un message pour réagir.</p>`);
+        };
+
+        window.openProfileEditor = () => {
+            if (!me) return;
+            draft = { avatar: me.avatar || "🙂", color: me.color || COLORS[0] };
+            openModal("profile", `
+                ${modalHead("👤 Mon profil")}
+                <p class="text-xs text-slate-500">ID : <b>${esc(currentId)}</b>${isAdmin ? " · 👑 Administrateur" : me.role === "mod" ? " · 🛡️ Modérateur" : ""}</p>
+                <label class="${LBL}">Pseudo</label><input id="pf-pseudo" value="${esc(me.pseudo)}" maxlength="20" class="${INP}">
+                <label class="${LBL}">Bio</label><input id="pf-bio" value="${esc(me.bio || "")}" maxlength="80" placeholder="Quelques mots sur toi" class="${INP}">
+                <label class="${LBL}">Avatar</label>
+                <div class="flex flex-wrap gap-2">${AVATARS.map(a => `<button data-m="avatar" data-v="${a}" class="w-10 h-10 text-xl rounded-xl bg-slate-100 hover:bg-slate-200 ${a === draft.avatar ? "ring-2 ring-blue-600" : ""}">${a}</button>`).join("")}</div>
+                <label class="${LBL}">Couleur du pseudo</label>
+                <div class="flex flex-wrap gap-2">${COLORS.map(c => `<button data-m="color" data-v="${c}" class="w-8 h-8 rounded-full ${c === draft.color ? "ring-2 ring-offset-2 ring-blue-600" : ""}" style="background:${c}"></button>`).join("")}</div>
+                <div class="mt-5"><button data-m="saveProfile" class="${BTN}">Enregistrer</button></div>
+                ${isAdmin ? "" : `<hr class="my-5">
+                <label class="${LBL}">Changer mon mot de passe</label>
+                <input type="password" id="pf-oldpw" placeholder="Ancien mot de passe" class="${INP} mb-2">
+                <input type="password" id="pf-newpw" placeholder="Nouveau mot de passe" class="${INP} mb-2">
+                <button data-m="savePw" class="${BTN}">Changer</button>`}
+            `);
+        };
+
+        function viewProfile(id) {
+            const p = profiles[id];
+            if (!p) return;
+            const since = p.createdAt ? new Date(p.createdAt).toLocaleDateString("fr-FR") : "—";
+            openModal("view", `${modalHead("Profil")}
+                <div class="text-center">
+                    <div class="text-6xl mb-2">${esc(p.avatar || "🙂")}</div>
+                    <div class="text-xl font-black" style="color:${esc(p.color || "#475569")}">${esc(p.pseudo)}${badge(p)}</div>
+                    <div class="text-xs text-slate-400 mb-3">${presence[id] ? "🟢 En ligne" : "⚪ Hors ligne"} · membre depuis le ${since}</div>
+                    <p class="text-sm text-slate-600">${esc(p.bio || "Pas de bio.")}</p>
+                </div>`);
+        }
+
+        window.openAdminPanel = () => { if (canMod()) renderAdminPanel(true); };
+
+        function renderAdminPanel(open) {
+            const rows = Object.entries(profiles).sort((a, b) => (a[1].pseudo || "").localeCompare(b[1].pseudo || "")).map(([id, p]) => {
+                const self = id === currentId, adm = id === ADMIN_ID;
+                const btn = (m, label, cls = "bg-slate-100 hover:bg-slate-200 text-slate-700") => `<button data-m="${m}" data-id="${esc(id)}" class="px-2 py-1 rounded-lg text-xs font-semibold ${cls}">${label}</button>`;
+                let actions = "";
+                if (!adm && !self) {
+                    actions += btn("adminMute", p.muted ? "🔊 Démuter" : "🔇 Muet");
+                    if (isAdmin) {
+                        actions += btn("adminRename", "✏️ Renommer") + btn("adminMod", p.role === "mod" ? "⬇️ Retirer modo" : "🛡️ Modo") + btn("adminResetPw", "🔑 MDP")
+                            + btn("adminBan", p.banned ? "✅ Débannir" : "🚫 Bannir", "bg-red-100 hover:bg-red-200 text-red-700")
+                            + btn("adminDel", "🗑️", "bg-red-100 hover:bg-red-200 text-red-700");
+                    }
+                }
+                const tags = [presence[id] ? "🟢" : "", p.role === "admin" ? "👑" : p.role === "mod" ? "🛡️" : "", p.muted ? "🔇" : "", p.banned ? "🚫" : ""].join(" ");
+                return `<div class="py-2.5 border-b border-slate-100">
+                    <div class="flex items-center gap-2 mb-1.5"><span class="text-xl">${esc(p.avatar || "🙂")}</span><b class="text-sm text-slate-800">${esc(p.pseudo || id)}</b><span class="text-xs text-slate-400">@${esc(id)}</span><span class="text-xs">${tags}</span></div>
+                    <div class="flex flex-wrap gap-1.5">${actions}</div></div>`;
+            }).join("");
+
+            const adminTools = isAdmin ? `
+                <h4 class="${LBL}">📢 Annonce épinglée</h4>
+                <div class="flex gap-2"><input id="ad-ann" placeholder="Texte de l'annonce..." class="${INP}"><button data-m="adminAnnounce" class="${BTN}">Publier</button><button data-m="adminClearAnn" class="px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-sm">Retirer</button></div>
+                <h4 class="${LBL}">🎉 Effets pour tout le monde</h4>
+                <div class="flex flex-wrap gap-2">${[["confetti", "🎉 Confettis"], ["rain", "🍕 Pluie de pizzas"], ["shake", "📳 Tremblement"], ["disco", "🪩 Disco"], ["spin", "🌀 Tornade"], ["flip", "🙃 Écran à l'envers"]].map(([k, l]) => `<button data-m="adminFx" data-fx="${k}" class="px-3 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-sm font-semibold">${l}</button>`).join("")}</div>
+                <h4 class="${LBL}">🧹 Salon actuel</h4>
+                <button data-m="adminClear" class="px-3 py-2 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 text-sm font-semibold">Vider # ${esc(channelLabels[currentChannel] || currentChannel)}</button>` : "";
+
+            const html = `${modalHead(isAdmin ? "👑 Panneau admin" : "🛡️ Modération")}${adminTools}<h4 class="${LBL}">👥 Membres (${Object.keys(profiles).length})</h4>${rows}`;
+            if (open) openModal("admin", html); else if (modalKind === "admin") $("modal-body").innerHTML = html;
+        }
+
+        $("modal-body").addEventListener("click", async (e) => {
+            const b = e.target.closest("[data-m]");
+            if (!b) return;
+            const d = b.dataset;
+            try {
+                switch (d.m) {
+                    case "close": return closeModal();
+                    case "avatar":
+                        draft.avatar = d.v;
+                        document.querySelectorAll('[data-m="avatar"]').forEach(x => x.classList.toggle("ring-2", x.dataset.v === d.v));
+                        return;
+                    case "color":
+                        draft.color = d.v;
+                        document.querySelectorAll('[data-m="color"]').forEach(x => { x.classList.toggle("ring-2", x.dataset.v === d.v); x.classList.toggle("ring-offset-2", x.dataset.v === d.v); });
+                        return;
+                    case "saveProfile": {
+                        const pseudo = $("pf-pseudo").value.trim(), bio = $("pf-bio").value.trim();
+                        if (!PSEUDO_RE.test(pseudo)) return toast("Pseudo invalide (2-20 caractères).");
+                        if (pseudoTaken(pseudo, currentId)) return toast("Ce pseudo est déjà pris.");
+                        await update(R("profiles/" + currentId), { pseudo, bio, avatar: draft.avatar, color: draft.color });
+                        await update(R("presence/" + currentId), { pseudo });
+                        closeModal();
+                        return toast("Profil mis à jour ✅");
+                    }
+                    case "savePw": {
+                        const oldPw = $("pf-oldpw").value, newPw = $("pf-newpw").value;
+                        if ((await hashPw(currentId, oldPw)) !== currentHash) return toast("Ancien mot de passe incorrect.");
+                        if (newPw.length < 4) return toast("Nouveau mot de passe trop court.");
+                        const h = await hashPw(currentId, newPw);
+                        await set(R("credentials/" + currentId), { hash: h });
+                        currentHash = h;
+                        localStorage.setItem("chat_hash", h);
+                        closeModal();
+                        return toast("Mot de passe changé 🔑");
+                    }
+                    case "adminMute": return setFlag(d.id, "muted", !(profiles[d.id] || {}).muted);
+                    case "adminBan": return setFlag(d.id, "banned", !(profiles[d.id] || {}).banned);
+                    case "adminMod": return setRole(d.id, (profiles[d.id] || {}).role === "mod" ? "member" : "mod");
+                    case "adminRename": {
+                        const np = prompt("Nouveau pseudo pour " + (profiles[d.id] || {}).pseudo + " :");
+                        return np && renameUser(d.id, np.trim());
+                    }
+                    case "adminResetPw": return resetPw(d.id);
+                    case "adminDel": return deleteAccount(d.id);
+                    case "adminAnnounce": return setAnnouncement($("ad-ann").value.trim());
+                    case "adminClearAnn": return window.clearAnnouncement();
+                    case "adminFx": return fireEffect(d.fx);
+                    case "adminClear": if (isAdmin && confirm("Vider tout le salon ?")) { await remove(R("channels/" + currentChannel)); toast("🧹 Salon vidé."); } return;
+                }
+            } catch (err) { toast("Erreur : " + err.message); }
+        });
+    </script>
+</body>
+</html>
