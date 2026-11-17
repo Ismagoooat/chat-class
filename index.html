@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat de Classe en Temps Réel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Personnalisation de la barre de défilement pour un look plus clean */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .typing-dot {
+            animation: pulse-slow 1.4s infinite ease-in-out both;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    </style>
+</head>
+<body class="bg-slate-900 h-screen flex flex-col font-sans antialiased overflow-hidden">
+
+    <!-- Écran de connexion (Pseudo) -->
+    <div id="auth-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md transform transition-all">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-3 shadow-inner">💬</div>
+                <h2 class="text-2xl font-black text-slate-900">Bienvenue sur le Chat !</h2>
+                <p class="text-sm text-slate-500 mt-1">Entre ton prénom ou ton pseudo pour rejoindre tes camarades.</p>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Ton Pseudo</label>
+                    <input type="text" id="username-input" placeholder="Ex: Thomas, Sarah..." class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-800 font-medium">
+                </div>
+                <button onclick="login()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-600/30 hover:bg-blue-700 hover:shadow-none transition duration-200">Entrer dans le salon</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interface principale -->
+    <div class="flex h-full overflow-hidden">
+
+        <!-- Barre latérale : Salons -->
+        <div class="w-72 bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800">
+            <div class="p-5 border-b border-slate-800/80 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-600/30">📚</div>
+                <div>
+                    <h1 class="font-bold text-white text-base">Chat de Classe</h1>
+                    <span id="current-user-display" class="text-xs text-blue-400 font-medium"></span>
+                </div>
+            </div>
+
+            <div class="p-4 flex-1 overflow-y-auto space-y-6">
+                <div>
+                    <h2 class="text-xs uppercase tracking-wider text-slate-500 font-bold mb-3 px-2">Salons de discussion</h2>
+                    <div class="space-y-1">
+                        <button onclick="switchChannel('general')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-600 text-white font-semibold transition shadow-sm channel-btn" data-channel="general">
+                            <span class="text-blue-200">#</span> général
+                        </button>
+                        <button onclick="switchChannel('devoirs')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition channel-btn" data-channel="devoirs">
+                            <span class="text-slate-600">#</span> devoirs
+                        </button>
+                        <button onclick="switchChannel('memes')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition channel-btn" data-channel="memes">
+                            <span class="text-slate-600">#</span> loisirs-partage
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pied de la sidebar avec info de connexion -->
+            <div class="p-4 border-t border-slate-800/80 bg-slate-950/30 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span class="text-xs text-slate-400 font-medium">Connecté en direct</span>
+                </div>
+                <button onclick="logout()" title="Changer de pseudo" class="text-slate-500 hover:text-slate-300 transition text-xs bg-slate-800 px-2.5 py-1 rounded-lg">Quitter</button>
+            </div>
+        </div>
+
+        <!-- Zone de discussion -->
+        <div class="flex-1 flex flex-col bg-slate-50 relative overflow-hidden">
+            <!-- Header du salon -->
+            <div class="px-6 py-4 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between shadow-xs z-10">
+                <div class="flex items-center gap-3">
+                    <h2 id="active-channel-title" class="text-lg font-bold text-slate-800"># général</h2>
+                    <span class="text-xs bg-slate-100 text-slate-500 font-medium px-2.5 py-1 rounded-full border border-slate-200">Temps réel actif</span>
+                </div>
+            </div>
+
+            <!-- Messages Container -->
+            <div id="messages-container" class="flex-1 p-6 overflow-y-auto space-y-4">
+                <!-- Les messages s'affichent ici -->
+            </div>
+
+            <!-- Indicateur de frappe -->
+            <div id="typing-indicator" class="px-6 py-1.5 text-xs text-slate-400 italic hidden flex items-center gap-2 bg-slate-100/50 border-t border-slate-200/60">
+                <div class="flex gap-1 items-center">
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full typing-dot"></span>
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full typing-dot"></span>
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full typing-dot"></span>
+                </div>
+                <span id="typing-text">Quelqu'un écrit...</span>
+            </div>
+
+            <!-- Formulaire d'envoi -->
+            <div class="p-4 border-t border-slate-200 bg-white shadow-lg">
+                <form id="message-form" onsubmit="sendMessage(event)" class="flex items-center gap-3 max-w-5xl mx-auto">
+                    <div class="flex-1 relative flex items-center">
+                        <input type="text" id="message-input" placeholder="Écris ton message ici..." class="w-full bg-slate-100 border border-slate-200 rounded-2xl px-5 py-3.5 pr-12 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-sm" autocomplete="off" oninput="handleTyping()">
+                    </div>
+                    <button type="submit" class="bg-blue-600 text-white px-6 py-3.5 rounded-2xl font-bold shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-none transition duration-200 flex items-center gap-2">
+                        <span>Envoyer</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+                            <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Firebase (Realtime Database) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, push, set, onValue, query, limitToLast, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAI54Qv3XeLkwsJxHCICaLFrh9tuhPCPo",
+            authDomain: "chat-classe-ddafc.firebaseapp.com",
+            databaseURL: "https://chat-classe-ddafc-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "chat-classe-ddafc",
+            storageBucket: "chat-classe-ddafc.firebasestorage.app",
+            messagingSenderId: "509741806327",
+            appId: "1:509741806327:web:9afa9a30df2d81161759f2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        let currentUser = localStorage.getItem("chat_username") || "";
+        let currentChannel = "general";
+        let typingTimeout = null;
+
+        window.onload = () => {
+            if (currentUser) {
+                document.getElementById("auth-modal").classList.add("hidden");
+                document.getElementById("current-user-display").innerText = `@${currentUser}`;
+                loadMessages();
+                setupTypingListener();
+            }
+        };
+
+        window.login = () => {
+            const input = document.getElementById("username-input").value.trim();
+            if (input) {
+                currentUser = input;
+                localStorage.setItem("chat_username", currentUser);
+                document.getElementById("auth-modal").classList.add("hidden");
+                document.getElementById("current-user-display").innerText = `@${currentUser}`;
+                loadMessages();
+                setupTypingListener();
+            }
+        };
+
+        window.logout = () => {
+            localStorage.removeItem("chat_username");
+            location.reload();
+        };
+
+        window.switchChannel = (channel) => {
+            currentChannel = channel;
+            document.getElementById("active-channel-title").innerText = `# ${channel}`;
+
+            document.querySelectorAll('.channel-btn').forEach(btn => {
+                if(btn.dataset.channel === channel) {
+                    btn.className = "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-blue-600 text-white font-semibold transition shadow-sm channel-btn";
+                    btn.querySelector('span').className = "text-blue-200";
+                } else {
+                    btn.className = "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition channel-btn";
+                    btn.querySelector('span').className = "text-slate-600";
+                }
+            });
+
+            loadMessages();
+        };
+
+        function loadMessages() {
+            const container = document.getElementById("messages-container");
+            container.innerHTML = "";
+
+            const messagesRef = query(ref(db, 'channels/' + currentChannel), limitToLast(100));
+
+            onValue(messagesRef, (snapshot) => {
+                container.innerHTML = "";
+
+                if (!snapshot.exists()) {
+                    container.innerHTML = `
+                        <div class="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400">
+                            <div class="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center text-2xl mb-3">📭</div>
+                            <p class="font-medium text-slate-600">Aucun message pour l'instant</p>
+                            <p class="text-xs text-slate-400 mt-1">Sois le premier à briser la glace dans ce salon !</p>
+                        </div>`;
+                    return;
+                }
+
+                snapshot.forEach((childSnapshot) => {
+                    const msg = childSnapshot.val();
+                    const isMe = msg.user === currentUser;
+
+                    // Formatage de l'heure
+                    const date = new Date(msg.createdAt || Date.now());
+                    const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                    const div = document.createElement("div");
+                    div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} mb-2`;
+
+                    div.innerHTML = `
+                        <div class="flex items-center gap-2 mb-1 px-1">
+                            <span class="text-xs font-bold text-slate-600">${escapeHtml(msg.user || 'Anonyme')}</span>
+                            <span class="text-[10px] text-slate-400">${timeString}</span>
+                        </div>
+                        <div class="max-w-lg px-4 py-2.5 rounded-2xl shadow-xs text-sm ${isMe ? 'bg-blue-600 text-white rounded-br-xs' : 'bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs'}">
+                            <p class="break-words leading-relaxed">${escapeHtml(msg.text || '')}</p>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+                container.scrollTop = container.scrollHeight;
+            });
+        }
+
+        // Fonctionnalité d'écriture en direct (Typing Indicator)
+        window.handleTyping = () => {
+            if (!currentUser) return;
+            const typingRef = ref(db, `typing/${currentChannel}/${currentUser}`);
+            set(typingRef, true);
+
+            // Supprime le statut après 2 secondes d'inactivité de frappe
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                remove(typingRef);
+            }, 2000);
+        };
+
+        function setupTypingListener() {
+            const typingRef = ref(db, `typing/${currentChannel}`);
+            onValue(typingRef, (snapshot) => {
+                const typingIndicator = document.getElementById("typing-indicator");
+                const typingText = document.getElementById("typing-text");
+
+                if (!snapshot.exists()) {
+                    typingIndicator.classList.add("hidden");
+                    return;
+                }
+
+                const typingUsers = [];
+                snapshot.forEach((child) => {
+                    const username = child.key;
+                    if (username !== currentUser) {
+                        typingUsers.push(username);
+                    }
+                });
+
+                if (typingUsers.length > 0) {
+                    typingIndicator.classList.remove("hidden");
+                    if (typingUsers.length === 1) {
+                        typingText.innerText = `${typingUsers[0]} est en train d'écrire...`;
+                    } else {
+                        typingText.innerText = `Plusieurs personnes écrivent...`;
+                    }
+                } else {
+                    typingIndicator.classList.add("hidden");
+                }
+            });
+        }
+
+        window.sendMessage = async (e) => {
+            e.preventDefault();
+            const textInput = document.getElementById("message-input");
+            const text = textInput.value.trim();
+
+            if (!text) return;
+
+            // Nettoyer l'indicateur de frappe immédiatement à l'envoi
+            if (currentUser) {
+                const typingRef = ref(db, `typing/${currentChannel}/${currentUser}`);
+                remove(typingRef);
+            }
+
+            try {
+                const messagesRef = ref(db, 'channels/' + currentChannel);
+                const newMessageRef = push(messagesRef);
+                await set(newMessageRef, {
+                    text: text,
+                    user: currentUser,
+                    createdAt: Date.now()
+                });
+                textInput.value = "";
+            } catch (err) {
+                alert("Erreur lors de l'envoi du message : " + err.message);
+            }
+        };
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+    </script>
+</body>
+</html>
