@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat de Classe soigné</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        @keyframes pulse-slow { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .typing-dot { animation: pulse-slow 1.4s infinite ease-in-out both; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes fall { from { transform: translateY(-10vh) rotate(0deg); opacity: 1; } to { transform: translateY(110vh) rotate(720deg); opacity: .9; } }
+        .fx-piece { position: fixed; top: 0; z-index: 100; pointer-events: none; animation: fall linear forwards; }
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0); }
+            20% { transform: translate(-8px, 4px) rotate(-.5deg); }
+            40% { transform: translate(8px, -4px) rotate(.5deg); }
+            60% { transform: translate(-6px, -3px); }
+            80% { transform: translate(6px, 3px); }
+        }
+        .fx-shake { animation: shake .4s infinite; }
+        @keyframes disco { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
+        .fx-disco { animation: disco 1s linear infinite; }
+        @keyframes spin360 { to { transform: rotate(360deg); } }
+        .fx-spin { animation: spin360 1.5s ease-in-out; }
+        .fx-flip { transform: rotate(180deg); transition: transform .8s; }
+        @keyframes flash { 0%,100% { background: transparent; } 30% { background: #fef08a; } }
+        .fx-flash { animation: flash 1.5s; border-radius: 1rem; }
+    </style>
+</head>
+<body class="bg-slate-900 h-screen flex flex-col font-sans antialiased overflow-hidden">
+
+    <!-- Écran de connexion / création de compte -->
+    <div id="auth-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md transform transition-all">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl mx-auto flex items-center justify-center text-3xl mb-3 shadow-inner">💬</div>
+                <h2 class="text-2xl font-black text-slate-900">Bienvenue sur le Chat !</h2>
+                <p class="text-sm text-slate-500 mt-1">Connecte-toi avec ton ID ou crée ton compte pour rejoindre tes camarades.</p>
+            </div>
+            <div class="flex bg-slate-100 rounded-xl p-1 mb-4 text-sm font-bold">
+                <button id="tab-login" onclick="setAuthMode('login')" class="flex-1 py-2 rounded-lg transition bg-white shadow text-slate-900">Connexion</button>
+                <button id="tab-register" onclick="setAuthMode('register')" class="flex-1 py-2 rounded-lg transition text-slate-500">Créer un compte</button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Ton ID</label>
+                    <input type="text" id="id-input" placeholder="Ex: thomas42" autocomplete="username" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-800 font-medium">
+                </div>
+                <div id="pseudo-field" class="hidden">
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Ton Pseudo</label>
+                    <input type="text" id="username-input" placeholder="Ex: Thomas, Sarah..." maxlength="20" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-800 font-medium">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Mot de passe</label>
+                    <input type="password" id="pw-input" placeholder="••••••" autocomplete="current-password" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-800 font-medium">
+                </div>
+                <p id="auth-error" class="hidden text-sm text-red-600 font-medium"></p>
+                <button id="auth-submit" onclick="submitAuth()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-600/30 hover:bg-blue-700 hover:shadow-none transition duration-200">Se connecter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fenêtre modale générique -->
+    <div id="modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm hidden z-40 flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+        <div id="modal-body" class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6"></div>
+    </div>
+
+    <!-- Notifications -->
+    <div id="toasts" class="fixed bottom-24 right-4 z-[60] flex flex-col gap-2"></div>
+
+    <!-- Interface principale -->
+    <div class="flex h-full overflow-hidden">
+        <!-- Barre latérale -->
+        <div class="w-72 bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800">
+            <div onclick="openSiteInfo()" title="Infos du site" class="p-5 border-b border-slate-800/80 flex items-center gap-3 cursor-pointer hover:bg-slate-800/40 transition">
+                <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-600/30">📚</div>
+                <div>
+                    <h1 class="font-bold text-white text-base">Chat de Classe</h1>
+                    <span id="current-user-display" class="text-xs text-blue-400 font-medium"></span>
+                </div>
+            </div>
+
+            <div class="p-4 flex-1 overflow-y-auto space-y-6">
+                <div>
+                    <div class="flex items-center justify-between mb-3 px-2">
+                        <h2 class="text-xs uppercase tracking-wider text-slate-500 font-bold">Salons de discussion</h2>
+                        <button id="room-add" onclick="openRoomEditor()" title="Créer un salon" class="hidden text-slate-400 hover:text-white text-xl leading-none">＋</button>
+                    </div>
+                    <div id="room-list" class="space-y-1"></div>
+                    <button id="hw-btn" onclick="switchChannel('__hw')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl mt-3 hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition channel-btn">📚 Espace devoirs</button>
+                </div>
+
+                <div>
+                    <h2 class="text-xs uppercase tracking-wider text-slate-500 font-bold mb-3 px-2">En ligne (<span id="online-count">0</span>)</h2>
+                    <div id="online-list" class="space-y-0.5"></div>
+                </div>
+
+                <div class="space-y-1">
+                    <button onclick="openInbox()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition text-sm">📥 Boîte de réception <span id="inbox-count" class="hidden ml-auto bg-red-500 text-white text-xs font-bold rounded-full px-2 py-0.5">0</span></button>
+                    <button onclick="openProfileEditor()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition text-sm">👤 Mon profil</button>
+                    <button onclick="openHelp()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium transition text-sm">❓ Commandes</button>
+                    <button id="admin-btn" onclick="openAdminPanel()" class="hidden w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 font-bold transition text-sm">👑 Panneau admin</button>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-slate-800/80 bg-slate-950/30 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span class="text-xs text-slate-400 font-medium">Connecté en direct</span>
+                </div>
+                <button onclick="logout()" title="Changer de compte" class="text-slate-500 hover:text-slate-300 transition text-xs bg-slate-800 px-2.5 py-1 rounded-lg">Quitter</button>
+            </div>
+        </div>
+
+        <!-- Zone de discussion -->
+        <div id="chat-zone" class="flex-1 flex flex-col bg-slate-50 relative overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between shadow-xs z-10">
+                <div class="flex items-center gap-3">
+                    <h2 id="active-channel-title" class="text-lg font-bold text-slate-800"># général</h2>
+                    <span class="text-xs bg-slate-100 text-slate-500 font-medium px-2.5 py-1 rounded-full border border-slate-200">Temps réel actif</span>
+                    <button onclick="openRoomInfo()" title="Infos du salon" class="bg-slate-100 border border-slate-200 rounded-full px-2.5 py-0.5 text-sm hover:bg-slate-200 transition">ℹ️</button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="search-input" placeholder="🔍 Rechercher..." class="w-44 bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition">
+                    <button id="sound-btn" onclick="toggleSound()" title="Son des notifications" class="bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 text-sm hover:bg-slate-200 transition">🔔</button>
+                </div>
+            </div>
+
+            <div id="announce-banner" class="hidden px-6 py-2 bg-amber-100 border-b border-amber-300 text-amber-900 text-sm flex items-center gap-2">
+                <span>📢</span>
+                <span id="announce-text" class="font-semibold flex-1"></span>
+                <span id="announce-by" class="text-xs opacity-70"></span>
+                <button id="announce-clear" onclick="clearAnnouncement()" class="hidden text-xs bg-amber-200 hover:bg-amber-300 rounded-lg px-2 py-0.5">✕</button>
+            </div>
+
+            <div id="hw-zone" class="hidden flex-1 p-6 overflow-y-auto"></div>
+            <div id="messages-container" class="flex-1 p-6 overflow-y-auto space-y-4"></div>
+
+            <div id="typing-indicator" class="px-6 py-1.5 text-xs text-slate-400 italic hidden flex items-center gap-2 bg-slate-100/50 border-t border-slate-200/60">
+                <div class="flex gap-1 items-center">
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full typing-dot"></span>
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full typing-dot"></span>
+                    <span class="w-1.5 h-1.5 bg-slate-400 rounded-full typing-dot"></span>
+                </div>
+                <span id="typing-text">Quelqu'un écrit...</span>
+            </div>
+
+            <div id="composer" class="p-4 border-t border-slate-200 bg-white shadow-lg">
+                <div id="reply-bar" class="hidden max-w-5xl mx-auto mb-2 px-4 py-2 bg-slate-100 border-l-4 border-blue-500 rounded-xl text-xs text-slate-600 items-center gap-2"><span>↩️ Réponse à</span><span id="reply-text" class="flex-1 truncate font-medium"></span><button type="button" onclick="cancelReply()" class="text-slate-400 hover:text-slate-700">✕</button></div>
+                <form id="message-form" onsubmit="sendMessage(event)" class="flex items-center gap-3 max-w-5xl mx-auto">
+                    <div class="flex-1 relative flex items-center">
+                        <input type="text" id="message-input" maxlength="500" placeholder="Écris ton message ici... (/help pour les commandes)" class="w-full bg-slate-100 border border-slate-200 rounded-2xl px-5 py-3.5 pr-12 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-sm disabled:opacity-60" autocomplete="off" oninput="handleTyping()">
+                    </div>
+                    <button type="button" id="poll-btn" onclick="openPollEditor()" title="Créer un sondage" class="bg-slate-100 border border-slate-200 rounded-2xl px-3.5 py-3.5 hover:bg-slate-200 transition">📊</button>
+                    <button type="button" id="img-btn" onclick="openImageSender()" title="Partager une image ou un fichier" class="bg-slate-100 border border-slate-200 rounded-2xl px-3.5 py-3.5 hover:bg-slate-200 transition">🖼️</button>
+                    <button type="submit" class="bg-blue-600 text-white px-6 py-3.5 rounded-2xl font-bold shadow-md shadow-blue-600/20 hover:bg-blue-700 hover:shadow-none transition duration-200 flex items-center gap-2">
+                        <span>Envoyer</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+                            <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, push, set, onValue, query, limitToLast, remove, onDisconnect, get, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAI54Qv3XeLkwsJxHCICaLFrh9tuhPCPo",
+            authDomain: "chat-classe-ddafc.firebaseapp.com",
+            databaseURL: "https://chat-classe-ddafc-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "chat-classe-ddafc",
+            storageBucket: "chat-classe-ddafc.firebasestorage.app",
+            messagingSenderId: "509741806327",
+            appId: "1:509741806327:web:9afa9a30df2d81161759f2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        /* ===================== CONSTANTES ===================== */
+        const ADMIN_ID = "ismagoat";
+        const ADMIN_HASH = "f63d9ee7ebcddff85eea1a0fcc53c6a7fcc9722b2929f323bd0f05efcb85ea03";
+        const HW_TABS = [["aide", "🙋 Demande d'aide"], ["cours", "📚 Cours"], ["revision", "📝 Feuille de révision"], ["autres", "📌 Autres"]];
+        const AVATARS = ["🙂","😎","🤓","🥳","🐱","🐶","🦊","🐼","🐸","🦄","🚀","⚽","🎮","🎸","🍕","👻"];
+        const COLORS = ["#475569","#2563eb","#059669","#d97706","#dc2626","#7c3aed","#db2777","#0d9488"];
+        const QUICK = ["👍","❤️","😂","😮","🔥"];
+        const HW_QUICK = ["👍","❤️","👎","✅","🔥"];
+        const ID_RE = /^[a-z0-9_-]{3,20}$/;
+        const PSEUDO_RE = /^[\p{L}\p{N} _-]{2,20}$/u;
+        const INP = "w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm";
+        const LBL = "block text-xs font-bold uppercase tracking-wider text-slate-500 mt-3 mb-1";
+        const BTN = "bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-blue-700 transition";
+
+        /* ===================== ÉTAT ===================== */
+        let currentUser = localStorage.getItem("chat_username") || "";
+        let currentId = localStorage.getItem("chat_userid") || "";
+        let currentHash = localStorage.getItem("chat_hash") || "";
+        let currentChannel = "general";
+        let typingTimeout = null;
+        let isAdmin = false;
+        let me = null;
+        let profiles = {};
+        let presence = {};
+        let lastMessages = [];
+        let searchTerm = "";
+        let stickBottom = true;
+        let unsubMessages = null;
+        let unsubTyping = null;
+        let booted = false;
+        let authMode = "login";
+        let modalKind = null;
+        let draft = {};
+        let rooms = {}, typingData = {}, replyTo = null, unsubHw = null, hwTab = "all", hwPosts = [];
+        let inbox = {}, inboxFirst = true, adminMembersOpen = false, adminManage = null, lastDm = 0;
+        let typingActive = false, typingSetAt = 0, srvOffset = 0, menuEl = null;
+        let lastSent = 0;
+        let unread = 0;
+        let soundOn = localStorage.getItem("chat_sound") !== "off";
+        const baseTitle = document.title;
+
+        /* ===================== OUTILS ===================== */
+        const $ = (id) => document.getElementById(id);
+        const R = (p) => ref(db, p);
+        const normId = (s) => (s || "").trim().toLowerCase();
+        const canMod = () => isAdmin || (me && me.role === "mod");
+        const pseudoTaken = (pseudo, exceptId) => Object.entries(profiles).some(([id, p]) => id !== exceptId && (p.pseudo || "").toLowerCase() === pseudo.toLowerCase());
+
+        async function sha256(s) {
+            const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+            return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+        }
+        const hashPw = (id, pw) => sha256(`chatclasse:${id}:${pw}`);
+
+        function escapeHtml(text) {
+            return String(text ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        }
+        const esc = escapeHtml;
+
+        function toast(msg) {
+            const t = document.createElement("div");
+            t.className = "bg-slate-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg border border-slate-700";
+            t.innerText = msg;
+            $("toasts").appendChild(t);
+            setTimeout(() => t.remove(), 3500);
+        }
+
+        let audioCtx;
+        function playSound() {
+            if (!soundOn) return;
+            try {
+                audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+                const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+                o.connect(g); g.connect(audioCtx.destination);
+                o.frequency.value = 880;
+                g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.25);
+                o.start(); o.stop(audioCtx.currentTime + 0.25);
+            } catch (e) {}
+        }
+        window.toggleSound = () => {
+            soundOn = !soundOn;
+            localStorage.setItem("chat_sound", soundOn ? "on" : "off");
+            $("sound-btn").innerText = soundOn ? "🔔" : "🔕";
+        };
+
+        function badge(p) {
+            return p && p.role === "admin" ? " 👑" : p && p.role === "mod" ? " 🛡️" : "";
+        }
+
+        /* ===================== AUTHENTIFICATION ===================== */
+        const tabCls = (a) => "flex-1 py-2 rounded-lg transition " + (a ? "bg-white shadow text-slate-900" : "text-slate-500");
+        function authError(msg) {
+            const e = $("auth-error");
+            e.innerText = msg;
+            e.classList.toggle("hidden", !msg);
+        }
+        window.setAuthMode = (m) => {
+            authMode = m;
+            $("pseudo-field").classList.toggle("hidden", m !== "register");
+            $("auth-submit").innerText = m === "login" ? "Se connecter" : "Créer mon compte";
+            $("tab-login").className = tabCls(m === "login");
+            $("tab-register").className = tabCls(m === "register");
+            authError("");
+        };
+
+        async function checkCreds(id, pw) {
+            if (!ID_RE.test(id)) throw new Error("ID invalide (3 à 20 caractères : lettres, chiffres, _ ou -).");
+            if (!pw) throw new Error("Entre ton mot de passe.");
+            const hash = await hashPw(id, pw);
+            return { hash, admin: id === ADMIN_ID && hash === ADMIN_HASH };
+        }
+
+        async function doLogin(id, pw) {
+            const { hash, admin } = await checkCreds(id, pw);
+            const cred = (await get(R("credentials/" + id))).val();
+            if (!admin && (!cred || cred.hash !== hash)) throw new Error("ID ou mot de passe incorrect.");
+            let prof = (await get(R("profiles/" + id))).val();
+            if (admin) {
+                if (!cred || cred.hash !== hash) await set(R("credentials/" + id), { hash });
+                if (!prof) prof = { pseudo: "Ismagoat", avatar: "👑", color: "#d97706", bio: "", createdAt: Date.now() };
+                prof.role = "admin";
+                prof.banned = false;
+                prof.muted = false;
+                await set(R("profiles/" + id), prof);
+            }
+            if (!prof) throw new Error("Profil introuvable.");
+            if (prof.banned) throw new Error("🚫 Ce compte a été banni.");
+            return { id, hash };
+        }
+
+        async function doRegister(id, pw, pseudo) {
+            const { admin } = await checkCreds(id, pw);
+            if (id === ADMIN_ID) {
+                if (!admin) throw new Error("Cet ID est réservé.");
+                return doLogin(id, pw);
+            }
+            if (pw.length < 4) throw new Error("Mot de passe trop court (4 caractères minimum).");
+            if (!PSEUDO_RE.test(pseudo)) throw new Error("Pseudo invalide (2 à 20 caractères, sans symboles spéciaux).");
+            if ((await get(R("credentials/" + id))).exists()) throw new Error("Cet ID est déjà pris.");
+            const all = (await get(R("profiles"))).val() || {};
+            if (Object.values(all).some(p => (p.pseudo || "").toLowerCase() === pseudo.toLowerCase())) throw new Error("Ce pseudo est déjà utilisé.");
+            const hash = await hashPw(id, pw);
+            await set(R("credentials/" + id), { hash });
+            await set(R("profiles/" + id), {
+                pseudo, avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)], color: COLORS[1],
+                bio: "", role: "member", createdAt: Date.now()
+            });
+            return { id, hash };
+        }
+
+        window.submitAuth = async () => {
+            const id = normId($("id-input").value);
+            const pw = $("pw-input").value;
+            const pseudo = $("username-input").value.trim();
+            authError("");
+            try {
+                const user = authMode === "register" ? await doRegister(id, pw, pseudo) : await doLogin(id, pw);
+                startSession(user.id, user.hash);
+            } catch (err) {
+                authError(err.message);
+            }
+        };
+        window.login = window.submitAuth;
+
+        function startSession(id, hash) {
+            currentId = id;
+            currentHash = hash;
+            isAdmin = id === ADMIN_ID && hash === ADMIN_HASH;
+            localStorage.setItem("chat_userid", id);
+            localStorage.setItem("chat_hash", hash);
+            $("auth-modal").classList.add("hidden");
+            boot();
+        }
+
+        window.logout = async () => {
+            try { if (currentId) await remove(R("presence/" + currentId)); } catch (e) {}
+            ["chat_username", "chat_userid", "chat_hash"].forEach(k => localStorage.removeItem(k));
+            location.reload();
+        };
+
+        window.onload = async () => {
+            $("auth-modal").querySelectorAll("input").forEach(i => i.addEventListener("keydown", (e) => { if (e.key === "Enter") window.submitAuth(); }));
+            $("sound-btn").innerText = soundOn ? "🔔" : "🔕";
+            if (currentId && currentHash) {
+                try {
+                    const admin = currentId === ADMIN_ID && currentHash === ADMIN_HASH;
+                    const cred = (await get(R("credentials/" + currentId))).val();
+                    if (admin || (cred && cred.hash === currentHash)) {
+                        startSession(currentId, currentHash);
+                        return;
+                    }
+                } catch (e) {}
+            }
+            $("auth-modal").classList.remove("hidden");
+        };
+
+        async function initDefaultRooms() {
+            try {
+                const snap = await get(R("rooms"));
+                const val = snap.val() || {};
+                if (!val.general) {
+                    await set(R("rooms/general"), { name: "général", writers: "all", private: false, members: "", slow: 0, maxLen: 500, polls: true, images: true, locked: true, createdAt: Date.now() });
+                }
+                if (!val.memes) {
+                    await set(R("rooms/memes"), { name: "loisirs-partage", writers: "all", private: false, members: "", slow: 0, maxLen: 500, polls: true, images: true, locked: true, createdAt: Date.now() });
+                }
+            } catch (e) {}
+        }
+
+        async function boot() {
+            if (booted) return;
+            booted = true;
+            await initDefaultRooms();
+            listenProfiles();
+            listenRooms();
+            listenInbox();
+            onValue(R(".info/serverTimeOffset"), (s) => { srvOffset = s.val() || 0; });
+            setupPresence();
+            listenAnnouncement();
+            listenEffects();
+            loadMessages();
+            setupTypingListener();
+        }
+
+        /* ===================== PROFILS & PRÉSENCE ===================== */
+        function listenProfiles() {
+            onValue(R("profiles"), (snap) => {
+                profiles = snap.val() || {};
+                me = profiles[currentId];
+                if (!me) { alert("Ton compte n'existe plus."); window.logout(); return; }
+                if (me.banned && !isAdmin) { alert("🚫 Tu as été banni."); window.logout(); return; }
+                currentUser = me.pseudo;
+                localStorage.setItem("chat_username", currentUser);
+                updateUserUI();
+                renderMessages();
+                renderMembers();
+                refreshModal();
+            });
+        }
+
+        function updateUserUI() {
+            $("current-user-display").innerText = `${me.avatar || "🙂"} @${currentUser}${isAdmin ? " 👑" : me.role === "mod" ? " 🛡️" : ""}`;
+            $("admin-btn").classList.toggle("hidden", !canMod());
+            applyRoomUI();
+        }
+
+        function setupPresence() {
+            onValue(R(".info/connected"), (s) => {
+                if (s.val() === true) {
+                    const pr = R("presence/" + currentId);
+                    onDisconnect(pr).remove();
+                    set(pr, { pseudo: currentUser, ts: Date.now() });
+                }
+            });
+            onValue(R("presence"), (s) => { presence = s.val() || {}; renderMembers(); });
+        }
+
+        function renderMembers() {
+            const ids = Object.keys(presence);
+            $("online-count").innerText = ids.length;
+            $("online-list").innerHTML = ids.map(id => {
+                const p = profiles[id] || {};
+                return `<button data-prof="${esc(id)}" class="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-800/60 text-left text-sm">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>${esc(p.avatar || "🙂")}</span>
+                    <span class="truncate">${esc(p.pseudo || id)}</span><span>${badge(p)}</span></button>`;
+            }).join("");
+        }
+        $("online-list").addEventListener("click", (e) => {
+            const b = e.target.closest("[data-prof]");
+            if (b) viewProfile(b.dataset.prof);
+        });
+
+        /* ===================== SALONS & MESSAGES ===================== */
+        const allRooms = () => rooms;
+        const roomName = (id) => id === "__hw" ? "Espace devoirs" : ((allRooms()[id] || {}).name || id);
+        const roomCfg = () => allRooms()[currentChannel] || {};
+        const canSee = (r) => !r.private || isAdmin || (r.members || "").split(",").map(normId).includes(currentId);
+
+        function listenRooms() {
+            onValue(R("rooms"), (snap) => {
+                rooms = snap.val() || {};
+                renderRooms();
+                if (currentChannel !== "__hw") {
+                    const r = allRooms()[currentChannel];
+                    if (!r || !canSee(r)) return switchChannel("general");
+                    applyRoomUI();
+                }
+                refreshModal();
+            });
+        }
+        function renderRooms() {
+            const cls = (on) => "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition channel-btn " + (on ? "bg-blue-600 text-white font-semibold shadow-sm" : "hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium");
+            $("room-list").innerHTML = Object.entries(allRooms()).filter(([, r]) => canSee(r)).map(([id, r]) =>
+                `<button data-room="${esc(id)}" class="${cls(id === currentChannel)}"><span class="opacity-60">${r.private ? "🔒" : "#"}</span> ${esc(r.name || id)}</button>`).join("");
+            $("hw-btn").className = cls(currentChannel === "__hw") + " mt-3";
+            $("room-add").classList.toggle("hidden", !isAdmin);
+        }
+        $("room-list").addEventListener("click", (e) => { const b = e.target.closest("[data-room]"); if (b) switchChannel(b.dataset.room); });
+
+        function writeBlock() {
+            if (currentChannel === "__hw") return "";
+            const r = roomCfg();
+            if (me && me.muted && !isAdmin) return "🔇 Tu as été rendu muet par un admin";
+            if (r.writers === "admin" && !isAdmin) return "🔒 Seuls les admins peuvent écrire ici";
+            if (r.writers === "mods" && !canMod()) return "🔒 Réservé aux modérateurs et admins";
+            return "";
+        }
+        function applyRoomUI() {
+            const r = roomCfg(), why = writeBlock(), inp = $("message-input");
+            inp.disabled = !!why;
+            inp.maxLength = r.maxLen || 500;
+            inp.placeholder = why || "Écris ton message ici... (/help pour les commandes)";
+            $("poll-btn").classList.toggle("hidden", r.polls === false);
+            $("img-btn").classList.toggle("hidden", r.images === false);
+        }
+
+        window.switchChannel = (channel) => {
+            stopTyping();
+            cancelReply();
+            closeMenu();
+            currentChannel = channel;
+            const hw = channel === "__hw";
+            $("active-channel-title").innerText = hw ? "📚 Espace devoirs" : `# ${roomName(channel)}`;
+            $("messages-container").classList.toggle("hidden", hw);
+            $("composer").classList.toggle("hidden", hw);
+            $("hw-zone").classList.toggle("hidden", !hw);
+            renderRooms();
+            applyRoomUI();
+            if (unsubHw) { unsubHw(); unsubHw = null; }
+            if (hw) {
+                if (unsubMessages) { unsubMessages(); unsubMessages = null; }
+                if (unsubTyping) { unsubTyping(); unsubTyping = null; }
+                $("typing-indicator").classList.add("hidden");
+                return loadHomework();
+            }
+            loadMessages();
+            setupTypingListener();
+        };
+
+        const isMine = (m) => m.userId ? m.userId === currentId : m.user === currentUser;
+        const displayName = (m) => (m.userId && profiles[m.userId] && profiles[m.userId].pseudo) || m.user || "Anonyme";
+        const mentionsMe = (t) => currentUser && (t || "").toLowerCase().includes("@" + currentUser.toLowerCase());
+
+        function loadMessages() {
+            if (unsubMessages) unsubMessages();
+            lastMessages = [];
+            stickBottom = true;
+            $("messages-container").innerHTML = "";
+            let first = true;
+
+            const messagesRef = query(R('channels/' + currentChannel), limitToLast(60));
+            unsubMessages = onValue(messagesRef, (snapshot) => {
+                const prevKeys = new Set(lastMessages.map(m => m.key));
+                lastMessages = [];
+                snapshot.forEach((child) => { lastMessages.push({ ...child.val(), key: child.key }); });
+
+                if (!first) {
+                    const fresh = lastMessages.filter(m => !prevKeys.has(m.key) && !isMine(m) && m.type !== "system");
+                    if (fresh.length) {
+                        playSound();
+                        if (fresh.some(m => mentionsMe(m.text))) toast("🔔 Tu as été mentionné !");
+                        if (document.hidden) { unread += fresh.length; document.title = `(${unread}) ${baseTitle}`; }
+                    }
+                }
+                first = false;
+                renderMessages();
+            });
+        }
+        document.addEventListener("visibilitychange", () => { if (!document.hidden) { unread = 0; document.title = baseTitle; } });
+
+        function formatText(t) {
+            let s = escapeHtml(t);
+            s = s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="underline">$1</a>');
+            s = s.replace(/(^|\s)@([\p{L}\p{N}_-]{2,20})/gu, '$1<span class="bg-amber-200 text-amber-900 rounded px-1 font-semibold">@$2</span>');
+            s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+            return s;
+        }
+
+        const safeImg = (u) => /^(https:\/\/\S+|data:image\/jpeg;base64,[A-Za-z0-9+/=]+)$/.test(u || "");
+
+        function pollHtml(m) {
+            const opts = Array.isArray(m.options) ? m.options : Object.values(m.options || {});
+            const votes = m.votes || {}, counts = opts.map(() => 0);
+            Object.values(votes).forEach(v => { if (counts[v] !== undefined) counts[v]++; });
+            const total = counts.reduce((a, b) => a + b, 0), mine = votes[currentId];
+            return `<div class="min-w-[240px]"><p class="font-bold mb-2">📊 ${esc(m.question)}</p>` + opts.map((o, i) => {
+                const pc = total ? Math.round(counts[i] * 100 / total) : 0;
+                return `<button data-act="vote" data-key="${m.key}" data-i="${i}" class="relative block w-full text-left mb-1.5 rounded-lg overflow-hidden border ${mine === i ? "border-blue-500" : "border-slate-300"} bg-white text-slate-800"><span class="absolute inset-y-0 left-0 bg-blue-200/70" style="width:${pc}%"></span><span class="relative flex justify-between gap-3 px-3 py-1.5 text-sm"><span>${mine === i ? "✅ " : ""}${esc(o)}</span><b>${pc}% <span class="font-normal text-xs">(${counts[i]})</span></b></span></button>`;
+            }).join("") + `<p class="text-[11px] opacity-70">${total} vote${total > 1 ? "s" : ""} · clique pour voter (re-clique pour annuler)</p></div>`;
+        }
+
+        function buildMessage(m) {
+            const div = document.createElement("div");
+            div.id = "msg-" + m.key;
+            const timeString = new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            const name = displayName(m), isMe = isMine(m), p = profiles[m.userId] || {};
+            const menuBtn = (m.type === "system" && !(isMe || canMod())) ? "" : `<button data-act="menu" data-key="${m.key}" title="Options" class="text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 rounded px-1 text-sm leading-none">⋯</button>`;
+
+            if (m.type === "system") {
+                div.className = "text-center text-xs text-slate-500 italic my-1";
+                div.innerHTML = `${formatText(m.text || "")} <span class="text-[10px] text-slate-400">${timeString}</span> ${menuBtn}`;
+                return div;
+            }
+
+            const reacts = Object.entries(m.reactions || {}).map(([emo, users]) => {
+                const n = Object.keys(users || {}).length;
+                if (!n) return "";
+                const on = users && users[currentId];
+                return `<button data-act="react" data-key="${m.key}" data-emoji="${esc(emo)}" class="text-xs px-2 py-0.5 rounded-full border ${on ? "bg-blue-100 border-blue-400 text-blue-700" : "bg-white border-slate-200 text-slate-600"} hover:scale-105 transition">${esc(emo)} ${n}</button>`;
+            }).join("");
+
+            const quote = m.replyTo ? `<button data-act="goto" data-key="${esc(m.replyTo.key)}" class="block w-full text-left text-xs mb-1.5 px-2 py-1 rounded-lg border-l-4 ${isMe ? "bg-blue-700/60 border-blue-200" : "bg-slate-100 border-slate-400"}"><b>${esc(m.replyTo.user || "")}</b><span class="block truncate opacity-80">${esc(m.replyTo.text || "")}</span></button>` : "";
+            const img = safeImg(m.image) ? `<img src="${esc(m.image)}" data-act="zoom" class="rounded-xl max-h-64 max-w-full mt-1 cursor-zoom-in" loading="lazy" alt="Image partagée">` : "";
+            const body = m.type === "poll" ? pollHtml(m)
+                : m.type === "action" ? `<p class="italic break-words">* ${esc(name)} ${formatText(m.text || "")}</p>`
+                : (m.text ? `<p class="break-words leading-relaxed">${formatText(m.text)}${m.edited ? ' <span class="text-[10px] opacity-60">(modifié)</span>' : ""}</p>` : "") + img + (m.file ? fileCard(m.file, isMe) : "");
+            const nameHtml = m.userId
+                ? `<button data-prof="${esc(m.userId)}" class="text-xs font-bold hover:underline" style="color:${esc(p.color || "#475569")}">${esc(name)}</button>`
+                : `<span class="text-xs font-bold text-slate-600">${esc(name)}</span>`;
+
+            div.className = `flex flex-col ${isMe ? "items-end" : "items-start"} mb-2`;
+            div.innerHTML = `
+                <div class="flex items-center gap-2 mb-1 px-1">
+                    <span>${esc(p.avatar || "")}</span>${nameHtml}<span class="text-xs">${badge(p)}</span>
+                    <span class="text-[10px] text-slate-400">${timeString}</span>${menuBtn}
+                </div>
+                <div class="max-w-lg px-4 py-2.5 rounded-2xl shadow-xs text-sm ${isMe ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"}${p.role === "admin" ? " ring-2 ring-amber-400" : ""}">${quote}${body}</div>
+                ${reacts ? `<div class="flex flex-wrap gap-1 mt-1">${reacts}</div>` : ""}`;
+            return div;
+        }
+
+        function renderMessages() {
+            const container = $("messages-container");
+            const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+            const st = container.scrollTop;
+            let list = lastMessages;
+            if (searchTerm) list = list.filter(m => (m.text || "").toLowerCase().includes(searchTerm) || displayName(m).toLowerCase().includes(searchTerm));
+            container.innerHTML = "";
+
+            if (!list.length) {
+                container.innerHTML = searchTerm
+                    ? `<div class="h-full flex items-center justify-center text-slate-400 text-sm">Aucun résultat pour « ${esc(searchTerm)} »</div>`
+                    : `
+                    <div class="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400">
+                        <div class="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center text-2xl mb-3">📭</div>
+                        <p class="font-medium text-slate-600">Aucun message pour l'instant</p>
+                        <p class="text-xs text-slate-400 mt-1">Sois le premier à briser la glace dans ce salon !</p>
+                    </div>`;
+                return;
+            }
+            list.forEach(m => container.appendChild(buildMessage(m)));
+            if (stickBottom || nearBottom) { container.scrollTop = container.scrollHeight; stickBottom = false; } else container.scrollTop = st;
+        }
+
+        $("search-input").addEventListener("input", (e) => { searchTerm = e.target.value.trim().toLowerCase(); renderMessages(); });
+
+        function closeMenu() { if (menuEl) { menuEl.remove(); menuEl = null; } }
+        function openMenu(btn, key) {
+            const same = menuEl && menuEl.dataset.key === key;
+            closeMenu();
+            if (same) return;
+            const m = lastMessages.find(x => x.key === key);
+            if (!m) return;
+            const canDel = isMine(m) || canMod(), canEdit = isMine(m) && !m.type && !m.image;
+            const item = (act, label) => `<button data-act="${act}" data-key="${key}" class="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-100 rounded-lg">${label}</button>`;
+            menuEl = document.createElement("div");
+            menuEl.id = "msg-menu";
+            menuEl.dataset.key = key;
+            menuEl.className = "fixed z-[70] bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 w-48 text-slate-700";
+            menuEl.innerHTML = (m.type === "system" ? "" : `<div class="flex justify-between px-1.5 pb-1.5 mb-1 border-b border-slate-100">${QUICK.map(e => `<button data-act="react" data-key="${key}" data-emoji="${e}" class="hover:scale-125 transition text-lg">${e}</button>`).join("")}</div>${item("reply", "↩️ Répondre")}`)
+                + (canEdit ? item("edit", "✏️ Modifier") : "") + (canDel ? item("del", "🗑️ Supprimer") : "");
+            document.body.appendChild(menuEl);
+            const r = btn.getBoundingClientRect(), h = menuEl.offsetHeight;
+            menuEl.style.left = Math.max(8, Math.min(innerWidth - 200, r.left > innerWidth / 2 ? r.right - 192 : r.left)) + "px";
+            menuEl.style.top = (r.bottom + h + 8 > innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4) + "px";
+        }
+        function runAct(b) {
+            const key = b.dataset.key, a = b.dataset.act;
+            if (a === "react") toggleReaction(key, b.dataset.emoji);
+            else if (a === "edit") editMessage(key);
+            else if (a === "del") deleteMessage(key);
+            else if (a === "reply") startReply(key);
+            else if (a === "vote") votePoll(key, +b.dataset.i);
+            else if (a === "goto") gotoMsg(key);
+            else if (a === "fdl" || a === "fopen") fetchFile(b.dataset.fid, b.dataset.ext, b.dataset.name, a === "fopen");
+            else if (a === "zoom") openModal("img", `${modalHead("Image")}<img src="${esc(b.src)}" class="max-w-full rounded-xl mx-auto">`);
+        }
+        document.addEventListener("click", (e) => {
+            const prof = e.target.closest("#messages-container [data-prof]");
+            if (prof) return viewProfile(prof.dataset.prof);
+            const b = e.target.closest("#messages-container [data-act], #hw-zone [data-act], #msg-menu [data-act], #modal-body [data-act]");
+            if (!b) return closeMenu();
+            if (b.dataset.act === "menu") return openMenu(b, b.dataset.key);
+            closeMenu();
+            runAct(b);
+        });
+        document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+        $("messages-container").addEventListener("scroll", closeMenu);
+
+        function startReply(key) {
+            const m = lastMessages.find(x => x.key === key);
+            if (!m) return;
+            const t = m.type === "poll" ? "📊 " + (m.question || "") : (m.text || (m.image ? "🖼️ Image" : m.file ? "📎 " + m.file.name : ""));
+            replyTo = { key, user: displayName(m), text: t.slice(0, 80) };
+            $("reply-text").innerText = `${replyTo.user} : ${replyTo.text}`;
+            $("reply-bar").classList.remove("hidden"); $("reply-bar").classList.add("flex");
+            $("message-input").focus();
+        }
+        window.cancelReply = () => { replyTo = null; $("reply-bar").classList.add("hidden"); $("reply-bar").classList.remove("flex"); };
+        function gotoMsg(key) {
+            const el = $("msg-" + key);
+            if (!el) return toast("Le message d'origine n'est plus dans l'historique chargé.");
+            el.scrollIntoView({ block: "center", behavior: "smooth" });
+            el.classList.add("fx-flash"); setTimeout(() => el.classList.remove("fx-flash"), 1500);
+        }
+        async function votePoll(key, i) {
+            try {
+                if (me && me.muted && !isAdmin) return toast("🔇 Tu es muet.");
+                const m = lastMessages.find(x => x.key === key), r = R(`channels/${currentChannel}/${key}/votes/${currentId}`);
+                if (m && m.votes && m.votes[currentId] === i) await remove(r); else await set(r, i);
+            } catch (e) { toast("Erreur : " + e.message); }
+        }
+
+        async function toggleReaction(key, emoji) {
+            try {
+                const m = lastMessages.find(x => x.key === key);
+                const has = m && m.reactions && m.reactions[emoji] && m.reactions[emoji][currentId];
+                const r = R(`channels/${currentChannel}/${key}/reactions/${emoji}/${currentId}`);
+                if (has) await remove(r); else await set(r, true);
+            } catch (e) { toast("Erreur : " + e.message); }
+        }
+        async function editMessage(key) {
+            const m = lastMessages.find(x => x.key === key);
+            if (!m) return;
+            const t = prompt("Modifier le message :", m.text);
+            if (t === null || !t.trim()) return;
+            try { await update(R(`channels/${currentChannel}/${key}`), { text: t.trim(), edited: true }); } catch (e) { toast("Erreur : " + e.message); }
+        }
+        async function deleteMessage(key) {
+            if (!confirm("Supprimer ce message ?")) return;
+            try { const fm = lastMessages.find(x => x.key === key); await remove(R(`channels/${currentChannel}/${key}`)); if (fm && fm.file) remove(R("files/" + fm.file.id)); } catch (e) { toast("Erreur : " + e.message); }
+        }
+
+        /* ===================== INDICATEUR DE FRAPPE ===================== */
+        const nowS = () => Date.now() + srvOffset;
+        window.handleTyping = () => {
+            if (!currentId || currentChannel === "__hw") return;
+            const ref = R(`typing/${currentChannel}/${currentId}`);
+            if (!typingActive || Date.now() - typingSetAt > 1000) {
+                if (!typingActive) onDisconnect(ref).remove();
+                set(ref, nowS()).catch(() => {});
+                typingActive = true; typingSetAt = Date.now();
+            }
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(stopTyping, 1500);
+        };
+        function stopTyping() {
+            clearTimeout(typingTimeout);
+            if (!typingActive || !currentId) return;
+            typingActive = false;
+            remove(R(`typing/${currentChannel}/${currentId}`)).catch(() => {});
+        }
+        $("message-input").addEventListener("blur", stopTyping);
+        addEventListener("pagehide", stopTyping);
+
+        function setupTypingListener() {
+            if (unsubTyping) unsubTyping();
+            typingData = {};
+            renderTyping();
+            unsubTyping = onValue(R(`typing/${currentChannel}`), (s) => { typingData = s.val() || {}; renderTyping(); });
+        }
+        function renderTyping() {
+            const names = Object.entries(typingData).filter(([id, ts]) => id !== currentId && typeof ts === "number" && nowS() - ts < 6000)
+                .map(([id]) => (profiles[id] && profiles[id].pseudo) || id);
+            $("typing-indicator").classList.toggle("hidden", !names.length || currentChannel === "__hw");
+            $("typing-text").innerText = names.length === 1 ? `${names[0]} est en train d'écrire...` : "Plusieurs personnes écrivent...";
+        }
+        setInterval(renderTyping, 2000);
+
+        /* ===================== ENVOI & COMMANDES ===================== */
+        async function postMessage(text, type, extra) {
+            const newMessageRef = push(R('channels/' + currentChannel));
+            await set(newMessageRef, {
+                text: text,
+                user: currentUser,
+                userId: currentId,
+                createdAt: Date.now(),
+                ...(type ? { type } : {}),
+                ...(replyTo && !type ? { replyTo } : {}),
+                ...(extra || {})
+            });
+        }
+
+        window.sendMessage = async (e) => {
+            e.preventDefault();
+            const textInput = $("message-input");
+            const text = textInput.value.trim();
+
+            if (!text || !currentId) return;
+            const why = writeBlock(); if (why) { toast(why); return; }
+            const gap = canMod() ? 700 : Math.max(0.7, roomCfg().slow || 0) * 1000;
+            if (Date.now() - lastSent < gap) { toast(`⏳ Doucement ! Un message toutes les ${Math.ceil(gap / 1000)} s ici.`); return; }
+            if (text.length > (roomCfg().maxLen || 500)) { toast("Message trop long pour ce salon."); return; }
+
+            stopTyping();
+
+            try {
+                lastSent = Date.now();
+                if (text.startsWith("/")) {
+                    await handleCommand(text);
+                } else {
+                    await postMessage(text);
+                }
+                textInput.value = "";
+                cancelReply();
+                stickBottom = true;
+            } catch (err) {
+                alert("Erreur lors de l'envoi du message : " + err.message);
+            }
+        };
+
+        const BALL = ["Oui, carrément 😎", "Non, désolé 😅", "Peut-être... 🤔", "Demande à ton prof 📚", "Absolument ! 🎉", "J'en doute 🙃", "100 % sûr ✅", "Les astres disent non 🔮"];
+        const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+        async function handleCommand(raw) {
+            const [cmd, ...rest] = raw.slice(1).split(/\s+/);
+            const c = cmd.toLowerCase();
+            const arg = rest.join(" ");
+            const adminCmds = ["clear", "announce", "confetti", "rain", "shake", "disco", "spin", "flip", "ban", "unban", "mute", "unmute", "rename", "mod", "unmod"];
+            if (adminCmds.includes(c)) {
+                const modOk = (c === "mute" || c === "unmute") && canMod();
+                if (!isAdmin && !modOk) { toast("👑 Commande réservée aux admins."); return; }
+            }
+            switch (c) {
+                case "help": openHelp(); return;
+                case "roll": { const n = Math.max(2, parseInt(arg) || 6); return postMessage(`🎲 ${currentUser} lance un dé à ${n} faces : ${1 + Math.floor(Math.random() * n)}`, "system"); }
+                case "flip": return postMessage(`🪙 ${currentUser} lance une pièce : ${Math.random() < .5 ? "PILE" : "FACE"}`, "system");
+                case "8ball": return postMessage(`🔮 « ${arg || "?"} » → ${pick(BALL)}`, "system");
+                case "me": return postMessage(arg || "fait quelque chose de mystérieux", "action");
+                case "shrug": return postMessage(`${arg} ¯\\_(ツ)_/¯`.trim());
+                case "tableflip": return postMessage("(╯°□°）╯︵ ┻━┻");
+                case "unflip": return postMessage("┬─┬ ノ( ゜-゜ノ)");
+                case "clear": if (confirm("Vider tout le salon ?")) await remove(R("channels/" + currentChannel)); return;
+                case "announce": return setAnnouncement(arg);
+                case "confetti": case "rain": case "shake": case "disco": case "spin": return fireEffect(c, arg);
+                case "flip" + "page": return fireEffect("flip");
+                case "ban": return setFlag(normId(arg), "banned", true);
+                case "unban": return setFlag(normId(arg), "banned", false);
+                case "mute": return setFlag(normId(arg), "muted", true);
+                case "unmute": return setFlag(normId(arg), "muted", false);
+                case "mod": return setRole(normId(arg), "mod");
+                case "unmod": return setRole(normId(arg), "member");
+                case "rename": return renameUser(normId(rest[0]), rest.slice(1).join(" "));
+                default: toast("Commande inconnue. Tape /help.");
+            }
+        }
+
+        /* ===================== ACTIONS D'ADMINISTRATION ===================== */
+        function guardTarget(id, needAdmin = true) {
+            if (needAdmin && !isAdmin) { toast("👑 Réservé aux admins."); return false; }
+            if (!needAdmin && !canMod()) { toast("🛡️ Réservé aux modérateurs."); return false; }
+            if (!profiles[id]) { toast("Membre introuvable : " + id); return false; }
+            if (id === ADMIN_ID) { toast("Impossible sur l'administrateur."); return false; }
+            return true;
+        }
+        async function setFlag(id, flag, val) {
+            if (!guardTarget(id, flag === "banned")) return;
+            await update(R("profiles/" + id), { [flag]: val });
+            toast(`${profiles[id].pseudo} : ${flag === "banned" ? (val ? "🚫 banni" : "✅ débanni") : (val ? "🔇 muet" : "🔊 démuté")}`);
+        }
+        async function setRole(id, role) {
+            if (!guardTarget(id)) return;
+            await update(R("profiles/" + id), { role });
+            toast(`${profiles[id].pseudo} est maintenant ${role === "mod" ? "modérateur 🛡️" : "membre"}`);
+        }
+        async function renameUser(id, pseudo) {
+            if (!guardTarget(id)) return;
+            if (!PSEUDO_RE.test(pseudo || "")) { toast("Pseudo invalide."); return; }
+            if (pseudoTaken(pseudo, id)) { toast("Pseudo déjà pris."); return; }
+            await update(R("profiles/" + id), { pseudo });
+            toast("✏️ Pseudo modifié.");
+        }
+        async function resetPw(id) {
+            if (!guardTarget(id)) return;
+            const pw = prompt("Nouveau mot de passe pour " + profiles[id].pseudo + " (4 caractères min.) :");
+            if (!pw || pw.length < 4) return;
+            await set(R("credentials/" + id), { hash: await hashPw(id, pw) });
+            toast("🔑 Mot de passe réinitialisé.");
+        }
+        async function deleteAccount(id) {
+            if (!guardTarget(id)) return;
+            if (!confirm("Supprimer définitivement le compte de " + profiles[id].pseudo + " ?")) return;
+            await remove(R("profiles/" + id));
+            await remove(R("credentials/" + id));
+            await remove(R("presence/" + id));
+            toast("🗑️ Compte supprimé.");
+        }
+        async function setAnnouncement(text) {
+            if (!isAdmin) return;
+            if (!text) { toast("Écris le texte de l'annonce."); return; }
+            await set(R("announcement"), { text, by: currentUser, ts: Date.now() });
+        }
+        window.clearAnnouncement = async () => { if (isAdmin) await remove(R("announcement")); };
+
+        function listenAnnouncement() {
+            onValue(R("announcement"), (s) => {
+                const v = s.val();
+                const b = $("announce-banner");
+                if (!v || !v.text) { b.classList.add("hidden"); return; }
+                $("announce-text").innerText = v.text;
+                $("announce-by").innerText = "— " + v.by;
+                $("announce-clear").classList.toggle("hidden", !isAdmin);
+                b.classList.remove("hidden");
+            });
+        }
+
+        /* ===================== EFFETS RIGOLOS ===================== */
+        async function fireEffect(type, text) {
+            if (!isAdmin) return;
+            await set(R("effects/latest"), { type, text: text || "", by: currentUser, ts: Date.now() });
+        }
+        let firstEffect = true;
+        function listenEffects() {
+            onValue(R("effects/latest"), (s) => {
+                const v = s.val();
+                if (firstEffect) { firstEffect = false; return; }
+                if (v && Date.now() - v.ts < 15000) runEffect(v);
+            });
+        }
+        function rainOf(list, n) {
+            for (let i = 0; i < n; i++) {
+                const el = document.createElement("div");
+                el.className = "fx-piece";
+                el.innerText = pick(list);
+                el.style.left = Math.random() * 100 + "vw";
+                el.style.fontSize = 18 + Math.random() * 28 + "px";
+                el.style.animationDuration = 2.5 + Math.random() * 3 + "s";
+                el.style.animationDelay = Math.random() * 1.5 + "s";
+                document.body.appendChild(el);
+                setTimeout(() => el.remove(), 8000);
+            }
+        }
+        function timedClass(el, cls, ms) { el.classList.add(cls); setTimeout(() => el.classList.remove(cls), ms); }
+        function runEffect(v) {
+            toast(`👑 ${v.by} a lancé : ${v.type}`);
+            switch (v.type) {
+                case "confetti": rainOf(["🎉", "🎊", "✨", "🥳", "🎈"], 90); break;
+                case "rain": {
+                    const list = v.text ? [...v.text].filter(ch => ch.trim()) : ["🍕", "🍔", "🍟", "🌮", "🍩"];
+                    rainOf(list.length ? list : ["🍕"], 70);
+                    break;
+                }
+                case "shake": timedClass(document.body, "fx-shake", 3000); break;
+                case "disco": timedClass(document.body, "fx-disco", 6000); break;
+                case "spin": timedClass($("messages-container"), "fx-spin", 1600); break;
+                case "flip": timedClass(document.body, "fx-flip", 5000); break;
+            }
+        }
+
+        /* ===================== SONDAGES, IMAGES, DEVOIRS, SALONS ===================== */
+        window.openPollEditor = () => openModal("poll", `${modalHead("📊 Nouveau sondage")}
+            <label class="${LBL}">Question</label><input id="pl-q" maxlength="120" class="${INP}">
+            <label class="${LBL}">Choix (un par ligne, 2 à 6)</label><textarea id="pl-o" rows="5" maxlength="400" class="${INP}" placeholder="Oui&#10;Non"></textarea>
+            <div class="mt-4"><button data-m="pollSend" class="${BTN}">Publier</button></div>`);
+
+        window.openImageSender = () => openModal("imgsend", `${modalHead("📎 Partager une image ou un fichier")}
+            <label class="${LBL}">Depuis ton appareil (image, pdf, docx, odt, txt… 600 Ko max)</label><input type="file" id="im-file" accept="image/*,.pdf,.doc,.docx,.odt,.ods,.odp,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,.md" class="${INP}">
+            <label class="${LBL}">… ou un lien (https://…)</label><input id="im-url" placeholder="https://exemple.com/image.jpg" class="${INP}">
+            <label class="${LBL}">Légende (facultatif)</label><input id="im-cap" maxlength="200" class="${INP}">
+            <div class="mt-4"><button data-m="imgSend" class="${BTN}">Envoyer</button></div>`);
+
+        function fileToDataUrl(file, max = 800) {
+            return new Promise((res, rej) => {
+                const img = new Image(), url = URL.createObjectURL(file);
+                img.onload = () => {
+                    const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement("canvas");
+                    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+                    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+                    URL.revokeObjectURL(url); res(c.toDataURL("image/jpeg", 0.7));
+                };
+                img.onerror = () => rej(new Error("Image illisible."));
+                img.src = url;
+            });
+        }
+        async function pickImage() {
+            const f = $("im-file").files[0], u = $("im-url").value.trim();
+            if (f) { const d = await fileToDataUrl(f); if (d.length > 300000) throw new Error("Image trop lourde, même compressée."); return d; }
+            if (u) { if (!safeImg(u)) throw new Error("Le lien doit commencer par https://"); return u; }
+            throw new Error("Choisis un fichier ou colle un lien.");
+        }
+
+        function loadHomework() {
+            if (unsubHw) unsubHw();
+            unsubHw = onValue(R("homework"), (snap) => {
+                hwPosts = [];
+                snap.forEach((rub) => { rub.forEach((c) => { hwPosts.push({ ...c.val(), key: c.key, rub: rub.key }); }); });
+                renderHomework();
+            });
+        }
+        const hwLabel = (k) => (HW_TABS.find(t => t[0] === k) || [0, k])[1];
+        
+        function renderHomework() {
+            const cnt = (k) => k === "all" ? hwPosts.length : hwPosts.filter(h => h.rub === k).length;
+            const tabs = [["all", "🗂️ Tout"], ...HW_TABS].map(([k, l]) => `<button data-hw="${k}" class="px-3 py-1.5 rounded-xl text-sm font-bold ${k === hwTab ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"}">${l} <span class="opacity-70 font-medium">${cnt(k)}</span></button>`).join("");
+            
+            const card = (h) => {
+                const dd = h.due ? new Date(h.due + "T23:59:59") : null, left = dd ? Math.ceil((dd - Date.now()) / 864e5) : 0;
+                const due = dd ? `<span class="text-xs font-bold px-2 py-0.5 rounded-full ${left <= 2 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}">📅 ${dd.toLocaleDateString("fr-FR")}${left >= 0 ? ` · J-${left}` : " · passé"}</span>` : "";
+                const who = (profiles[h.userId] || {}).pseudo || h.user || "?";
+                
+                // Réactions sur le devoirs
+                const reacts = Object.entries(h.reactions || {}).map(([emo, users]) => {
+                    const n = Object.keys(users || {}).length;
+                    if (!n) return "";
+                    const on = users && users[currentId];
+                    return `<button data-hw-react="${h.key}" data-rub="${esc(h.rub)}" data-emoji="${esc(emo)}" class="text-xs px-2 py-0.5 rounded-full border ${on ? "bg-blue-100 border-blue-400 text-blue-700" : "bg-white border-slate-200 text-slate-600"} hover:scale-105 transition">${esc(emo)} ${n}</button>`;
+                }).join("");
+
+                const addReactButtons = `<div class="flex items-center gap-1 mt-2">${HW_QUICK.map(e => `<button data-hw-react="${h.key}" data-rub="${esc(h.rub)}" data-emoji="${e}" class="hover:scale-125 transition text-base" title="Réagir">${e}</button>`).join("")}</div>`;
+
+                // Commentaires sur le devoirs
+                const commentsObj = h.comments || {};
+                const commentsList = Object.entries(commentsObj).map(([ck, cv]) => {
+                    const cp = profiles[cv.userId] || {};
+                    const canDelComm = cv.userId === currentId || canMod();
+                    return `<div class="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-xs mt-2">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-bold" style="color:${esc(cp.color || "#475569")}">${esc(cv.user)}</span>
+                            <span class="text-[10px] text-slate-400">${new Date(cv.createdAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <p class="text-slate-700 whitespace-pre-wrap break-words">${formatText(cv.text)}</p>
+                        ${canDelComm ? `<button data-hw-delcomm="${ck}" data-rub="${esc(h.rub)}" data-key="${h.key}" class="text-[10px] text-red-500 hover:underline mt-1">Supprimer</button>` : ""}
+                    </div>`;
+                }).join("");
+
+                return `<div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs mb-4">
+                    <div class="flex items-start justify-between gap-2"><h3 class="font-bold text-slate-800 break-words">${esc(h.title)}</h3>${(h.userId === currentId || canMod()) ? `<button data-hw-del="${h.key}" data-rub="${esc(h.rub)}" class="text-slate-400 hover:text-red-600">🗑️</button>` : ""}</div>
+                    <div class="flex flex-wrap items-center gap-2 my-1"><span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">${esc(hwLabel(h.rub))}</span>${due}<span class="text-xs text-slate-400">${esc(who)} · ${new Date(h.createdAt || 0).toLocaleDateString("fr-FR")}</span></div>
+                    ${h.text ? `<p class="text-sm text-slate-600 whitespace-pre-wrap break-words">${formatText(h.text)}</p>` : ""}
+                    ${safeImg(h.image) ? `<img src="${esc(h.image)}" data-act="zoom" class="rounded-xl max-h-72 mt-2 cursor-zoom-in" loading="lazy" alt="Document">` : ""}
+                    ${h.file ? fileCard(h.file, false) : ""}
+                    <div class="flex flex-wrap gap-1 mt-2">${reacts}</div>
+                    ${addReactButtons}
+                    <div class="mt-3 pt-3 border-t border-slate-100">
+                        <h4 class="text-xs font-bold text-slate-500 mb-1">💬 Commentaires (${Object.keys(commentsObj).length})</h4>
+                        ${commentsList}
+                        <div class="flex gap-2 mt-2">
+                            <input type="text" id="hw-comm-${h.key}" placeholder="Ajouter un commentaire..." maxlength="500" class="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-600">
+                            <button data-hw-addcomm="${h.key}" data-rub="${esc(h.rub)}" class="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700">Envoyer</button>
+                        </div>
+                    </div>
+                </div>`;
+            };
+
+            const list = hwPosts.filter(h => hwTab === "all" || h.rub === hwTab).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            $("hw-zone").innerHTML = `<div class="max-w-3xl mx-auto"><div class="flex flex-wrap gap-2 items-center mb-4">${tabs}<button onclick="openHwEditor()" class="ml-auto ${BTN}">＋ Ajouter</button></div>
+                <div class="space-y-3">${list.length ? list.map(card).join("") : '<p class="text-center text-slate-400 py-10">Rien dans cette rubrique pour l\'instant.</p>'}</div></div>`;
+        }
+
+        $("hw-zone").addEventListener("click", async (e) => {
+            const t = e.target.closest("[data-hw]");
+            const d = e.target.closest("[data-hw-del]");
+            const reactBtn = e.target.closest("[data-hw-react]");
+            const commBtn = e.target.closest("[data-hw-addcomm]");
+            const commDelBtn = e.target.closest("[data-hw-delcomm]");
+
+            if (t) { hwTab = t.dataset.hw; renderHomework(); }
+            if (d && confirm("Supprimer cette publication ?")) {
+                try {
+                    const h = hwPosts.find(x => x.key === d.dataset.hwDel);
+                    await remove(R(`homework/${d.dataset.rub}/${d.dataset.hwDel}`));
+                    if (h && h.file) remove(R("files/" + h.file.id));
+                } catch (err) { toast("Erreur : " + err.message); }
+            }
+            if (reactBtn) {
+                const key = reactBtn.dataset.hw-react || reactBtn.getAttribute("data-hw-react");
+                const rub = reactBtn.dataset.rub;
+                const emoji = reactBtn.dataset.emoji;
+                try {
+                    const post = hwPosts.find(x => x.key === key);
+                    const has = post && post.reactions && post.reactions[emoji] && post.reactions[emoji][currentId];
+                    const refPath = R(`homework/${rub}/${key}/reactions/${emoji}/${currentId}`);
+                    if (has) await remove(refPath); else await set(refPath, true);
+                } catch(err) { toast("Erreur : " + err.message); }
+            }
+            if (commBtn) {
+                const key = commBtn.dataset.hwAddcomm;
+                const rub = commBtn.dataset.rub;
+                const input = $(`hw-comm-${key}`);
+                const text = input ? input.value.trim() : "";
+                if (!text) return;
+                if (me && me.muted && !isAdmin) return toast("🔇 Tu es muet.");
+                try {
+                    await set(push(R(`homework/${rub}/${key}/comments`)), {
+                        text,
+                        user: currentUser,
+                        userId: currentId,
+                        createdAt: Date.now()
+                    });
+                    input.value = "";
+                } catch(err) { toast("Erreur : " + err.message); }
+            }
+            if (commDelBtn) {
+                const ck = commDelBtn.dataset.hwDelcomm;
+                const rub = commDelBtn.dataset.rub;
+                const key = commDelBtn.dataset.key;
+                if (confirm("Supprimer ce commentaire ?")) {
+                    try {
+                        await remove(R(`homework/${rub}/${key}/comments/${ck}`));
+                    } catch(err) { toast("Erreur : " + err.message); }
+                }
+            }
+        });
+
+        window.openHwEditor = () => openModal("hw", `${modalHead("＋ Publier dans l'espace devoirs")}
+            <label class="${LBL}">Rubrique</label><select id="hw-r" class="${INP}">${HW_TABS.map(([k, l]) => `<option value="${k}" ${k === (hwTab === "all" ? "aide" : hwTab) ? "selected" : ""}>${l}</option>`).join("")}</select>
+            <label class="${LBL}">Titre</label><input id="hw-t" maxlength="100" class="${INP}">
+            <label class="${LBL}">Détails</label><textarea id="hw-x" rows="4" maxlength="1500" class="${INP}"></textarea>
+            <label class="${LBL}">Date limite (facultatif)</label><input type="date" id="hw-d" class="${INP}">
+            <label class="${LBL}">Image ou fichier (pdf, docx, odt… 600 Ko max)</label><input type="file" id="im-file" accept="image/*,.pdf,.doc,.docx,.odt,.ods,.odp,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,.md" class="${INP}"><input id="im-url" placeholder="… ou lien d'image https://" class="${INP} mt-2">
+            <div class="mt-4"><button data-m="hwSend" class="${BTN}">Publier</button></div>`);
+
+        window.openRoomEditor = (id) => {
+            if (!isAdmin) return;
+            const r = id ? allRooms()[id] : {};
+            const sel = (v, l) => `<option value="${v}" ${(r.writers || "all") === v ? "selected" : ""}>${l}</option>`;
+            const chk = (i, l, on) => `<label class="flex items-center gap-2 text-sm text-slate-700 mt-2"><input type="checkbox" id="${i}" ${on ? "checked" : ""}> ${l}</label>`;
+            openModal("room", `${modalHead(id ? "⚙️ Salon : " + esc(r.name) : "＋ Nouveau salon")}
+                <input type="hidden" id="rm-id" value="${esc(id || "")}">
+                <label class="${LBL}">Nom</label><input id="rm-name" maxlength="24" value="${esc(r.name || "")}" class="${INP}">
+                <label class="${LBL}">Qui peut écrire ?</label><select id="rm-w" class="${INP}">${sel("all", "Tout le monde")}${sel("mods", "Modos + admins")}${sel("admin", "Admins seulement")}</select>
+                ${chk("rm-priv", "🔒 Salon privé (membres choisis)", r.private)}
+                <label class="${LBL}">Membres admis (IDs séparés par des virgules)</label><input id="rm-mem" value="${esc(r.members || "")}" placeholder="thomas42, sarah7" class="${INP}">
+                <label class="${LBL}">Délai entre 2 messages (secondes, 0 = aucun)</label><input id="rm-slow" type="number" min="0" max="3600" value="${r.slow || 0}" class="${INP}">
+                <label class="${LBL}">Longueur max d'un message (20 à 500)</label><input id="rm-max" type="number" min="20" max="500" value="${r.maxLen || 500}" class="${INP}">
+                ${chk("rm-poll", "📊 Sondages autorisés", r.polls !== false)}${chk("rm-img", "🖼️ Images autorisées", r.images !== false)}
+                <div class="mt-5"><button data-m="roomSave" class="${BTN}">Enregistrer</button></div>`);
+        };
+
+        /* ===================== FICHIERS & MESSAGES PRIVÉS ===================== */
+        const FILE_EXTS = ["pdf", "doc", "docx", "odt", "ods", "odp", "txt", "rtf", "csv", "xls", "xlsx", "ppt", "pptx", "md"];
+        const PREVIEW = { pdf: "application/pdf", txt: "text/plain;charset=utf-8", md: "text/plain;charset=utf-8", csv: "text/plain;charset=utf-8" };
+        const FILE_ICON = { pdf: "📕", doc: "📘", docx: "📘", odt: "📘", txt: "📄", md: "📄", rtf: "📄", csv: "📊", xls: "📗", xlsx: "📗", ods: "📗", ppt: "📙", pptx: "📙", odp: "📙" };
+        const tagsOf = (id, p) => [presence[id] ? "🟢" : "", p.role === "admin" ? "👑" : p.role === "mod" ? "🛡️" : "", p.muted ? "🔇" : "", p.banned ? "🚫" : ""].join(" ");
+
+        async function uploadFile(f) {
+            const ext = (f.name.split(".").pop() || "").toLowerCase();
+            if (!FILE_EXTS.includes(ext)) throw new Error("Type de fichier non autorisé (pdf, docx, odt, txt, xlsx, pptx…).");
+            if (f.size > 600000) throw new Error("Fichier trop lourd (600 Ko maximum).");
+            const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = () => rej(new Error("Lecture impossible.")); r.readAsDataURL(f); });
+            const ref = push(R("files"));
+            await set(ref, { name: f.name.slice(0, 80), ext, data, by: currentId, createdAt: Date.now() });
+            return { id: ref.key, name: f.name.slice(0, 80), ext, size: f.size };
+        }
+        async function pickAtt() {
+            const f = $("im-file").files[0];
+            if (f && !f.type.startsWith("image/")) return { file: await uploadFile(f) };
+            return { image: await pickImage() };
+        }
+        function fileCard(f, dark) {
+            const a = `data-fid="${esc(f.id)}" data-ext="${esc(f.ext)}" data-name="${esc(f.name)}"`;
+            return `<div class="flex items-center gap-3 mt-1 p-2.5 rounded-xl text-left ${dark ? "bg-blue-700/60" : "bg-slate-100 text-slate-800"}"><span class="text-2xl">${FILE_ICON[f.ext] || "📄"}</span>
+                <div class="min-w-0 flex-1"><p class="text-sm font-semibold truncate">${esc(f.name)}</p><p class="text-[11px] opacity-70">${esc(String(f.ext).toUpperCase())} · ${Math.max(1, Math.round((f.size || 0) / 1024))} Ko</p></div>
+                ${PREVIEW[f.ext] ? `<button data-act="fopen" ${a} title="Ouvrir" class="text-sm px-2 py-1 rounded-lg bg-white/80 text-slate-700 hover:bg-white">👁️</button>` : ""}
+                <button data-act="fdl" ${a} title="Télécharger" class="text-sm px-2 py-1 rounded-lg bg-white/80 text-slate-700 hover:bg-white">⬇️</button></div>`;
+        }
+        async function fetchFile(fid, ext, name, open) {
+            const w = open ? window.open("about:blank", "_blank") : null;
+            try {
+                const v = (await get(R("files/" + fid))).val();
+                if (!v) { if (w) w.close(); return toast("Fichier introuvable (supprimé ?)."); }
+                const bin = atob(v.data), arr = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                const url = URL.createObjectURL(new Blob([arr], { type: open ? PREVIEW[ext] : "application/octet-stream" }));
+                if (open && w) w.location.href = url;
+                else { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+                setTimeout(() => URL.revokeObjectURL(url), 120000);
+            } catch (e) { if (w) w.close(); toast("Erreur : " + e.message); }
+        }
+
+        /* --- Messages privés (boîte de réception) --- */
+        function listenInbox() {
+            onValue(R("inbox/" + currentId), (snap) => {
+                const prev = new Set(Object.keys(inbox));
+                inbox = snap.val() || {};
+                const n = Object.values(inbox).filter(m => !m.read).length;
+                $("inbox-count").innerText = n; $("inbox-count").classList.toggle("hidden", !n);
+                if (!inboxFirst && Object.entries(inbox).some(([k, m]) => !prev.has(k) && !m.read)) { playSound(); toast("✉️ Nouveau message privé !"); }
+                inboxFirst = false;
+                if (modalKind === "inbox") { renderInbox(); markRead(); }
+            });
+        }
+        function markRead() {
+            Object.entries(inbox).filter(([, m]) => !m.read).forEach(([k]) => update(R(`inbox/${currentId}/${k}`), { read: true }).catch(() => {}));
+        }
+        window.openInbox = () => { renderInbox(true); markRead(); };
+        function renderInbox(open) {
+            const list = Object.entries(inbox).map(([k, v]) => ({ ...v, key: k })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            const html = modalHead("📥 Boîte de réception") + (list.length ? list.map(m => {
+                const quote = m.replyTo ? `<div class="text-xs mb-1.5 px-2 py-1 rounded-lg border-l-4 bg-slate-100 border-slate-400"><b>${esc(m.replyTo.user || "")}</b><span class="block truncate opacity-80">${esc(m.replyTo.text || "")}</span></div>` : "";
+                return `<div class="border ${m.read ? "border-slate-200" : "border-blue-400 bg-blue-50"} rounded-2xl p-3 mb-2">
+                    <div class="flex items-center gap-2 text-sm"><b>${esc((profiles[m.from] || {}).pseudo || m.fromName || m.from)}</b><span class="text-xs text-slate-400">${new Date(m.createdAt || 0).toLocaleString("fr-FR")}</span></div>
+                    ${quote}
+                    ${m.text ? `<p class="text-sm text-slate-700 mt-1 whitespace-pre-wrap break-words">${formatText(m.text)}</p>` : ""}
+                    ${safeImg(m.image) ? `<img src="${esc(m.image)}" data-act="zoom" class="rounded-xl max-h-48 mt-2 cursor-zoom-in" alt="Image">` : ""}${m.file ? fileCard(m.file, false) : ""}
+                    <div class="mt-2 flex gap-2"><button data-m="dmReply" data-id="${esc(m.from)}" data-key="${m.key}" class="px-3 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700">↩️ Répondre</button>
+                    <button data-m="inboxDel" data-key="${m.key}" class="px-2 py-1 rounded-lg text-xs bg-slate-100 hover:bg-red-100">🗑️</button></div></div>`;
+            }).join("") : '<p class="text-center text-slate-400 py-8">Aucun message privé pour l\'instant.</p>');
+            if (open) openModal("inbox", html); else if (modalKind === "inbox") $("modal-body").innerHTML = html;
+        }
+
+        window.openDm = (to, quoteObj) => {
+            const p = profiles[to];
+            if (!p) return toast("Destinataire introuvable.");
+            if (me && me.muted && !isAdmin) return toast("🔇 Tu es muet.");
+            window._activeDmReply = quoteObj || null;
+            const quoteDisplay = quoteObj ? `<div class="text-xs mb-2 px-3 py-1.5 bg-slate-100 border-l-4 border-blue-500 rounded-lg"><b>↩️ Réponse à ${esc(quoteObj.user)} :</b> <span class="truncate">${esc(quoteObj.text)}</span></div>` : "";
+            openModal("dm", `${modalHead("✉️ Message privé")}
+                <p class="text-sm text-slate-600">À : <b>${esc(p.avatar || "")} ${esc(p.pseudo)}</b></p>
+                ${quoteDisplay}
+                <textarea id="dm-t" rows="4" maxlength="500" class="${INP} mt-2" placeholder="Ton message…"></textarea>
+                <label class="${LBL}">Image ou document (facultatif)</label>
+                <input type="file" id="im-file" accept="image/*,.pdf,.doc,.docx,.odt,.ods,.odp,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,.md" class="${INP}"><input id="im-url" placeholder="… ou lien d'image https://" class="${INP} mt-2">
+                <input type="hidden" id="dm-to" value="${esc(to)}"><div class="mt-4"><button data-m="dmSend" class="${BTN}">Envoyer</button></div>`);
+        };
+
+        /* --- Infos du site / du salon --- */
+        const memRow = (id) => { const p = profiles[id]; return p ? `<button data-m="viewProf" data-id="${esc(id)}" class="flex items-center gap-2 w-full text-left py-1.5 border-b border-slate-100 text-sm"><span>${presence[id] ? "🟢" : "⚪"}</span><span class="text-lg">${esc(p.avatar || "🙂")}</span><b>${esc(p.pseudo || id)}</b><span class="text-xs">${badge(p)}</span></button>` : ""; };
+        const roomRules = (r) => `✍️ ${r.writers === "admin" ? "admins seulement" : r.writers === "mods" ? "modos + admins" : "tout le monde"}${r.slow ? ` · ⏳ ${r.slow} s entre 2 messages` : ""} · ${r.maxLen || 500} caractères max${r.polls === false ? " · sans sondages" : ""}${r.images === false ? " · sans images/fichiers" : ""}`;
+        
+        window.openSiteInfo = () => {
+            const ids = Object.keys(profiles).sort((a, b) => (profiles[a].pseudo || "").localeCompare(profiles[b].pseudo || ""));
+            const rms = Object.entries(allRooms()).filter(([, r]) => canSee(r)).map(([id, r]) => `<div class="py-1.5 border-b border-slate-100 text-sm"><b>${r.private ? "🔒" : "#"} ${esc(r.name || id)}</b><div class="text-xs text-slate-500">${esc(roomRules(r))}</div></div>`).join("");
+            openModal("info", `${modalHead("ℹ️ Chat de Classe")}
+                <p class="text-sm text-slate-600">Le chat en temps réel de la classe : salons, sondages, images et fichiers, espace devoirs et messages privés (📥 boîte de réception).</p>
+                <h4 class="${LBL}">💬 Salons</h4>${rms}
+                <h4 class="${LBL}">👥 Membres (${ids.length})</h4>${ids.map(memRow).join("")}`);
+        };
+
+        window.openRoomInfo = () => {
+            if (currentChannel === "__hw") return openModal("info", `${modalHead("📚 Espace devoirs")}<p class="text-sm text-slate-600">Espace partagé et non supprimable, organisé en rubriques : aide, cours, révisions, autres.</p>`);
+            const r = roomCfg();
+            const ids = r.private
+                ? [...new Set((r.members || "").split(",").filter(Boolean).concat(Object.keys(profiles).filter(i => profiles[i].role === "admin")))]
+                : [...new Set(lastMessages.map(m => m.userId).filter(Boolean))];
+            openModal("info", `${modalHead((r.private ? "🔒 " : "# ") + esc(roomName(currentChannel)))}
+                <p class="text-xs text-slate-500">${esc(roomRules(r))}</p>
+                <h4 class="${LBL}">${r.private ? "Membres admis" : "Ont écrit récemment ici"} (${ids.filter(i => profiles[i]).length})</h4>${ids.map(memRow).join("") || '<p class="text-sm text-slate-400">Personne pour l\'instant.</p>'}
+                ${isAdmin ? `<div class="mt-4"><button data-m="roomEdit" data-id="${esc(currentChannel)}" class="${BTN}">⚙️ Paramètres du salon</button></div>` : ""}`);
+        };
+
+        function manageView(id) {
+            const p = profiles[id];
+            const btn = (m, label, cls = "bg-slate-100 hover:bg-slate-200 text-slate-700") => `<button data-m="${m}" data-id="${esc(id)}" class="px-3 py-2 rounded-xl text-sm font-semibold ${cls}">${label}</button>`;
+            let a = btn("adminMute", p.muted ? "🔊 Démuter" : "🔇 Rendre muet");
+            if (isAdmin) a += btn("adminRename", "✏️ Renommer") + btn("adminMod", p.role === "mod" ? "⬇️ Retirer modo" : "🛡️ Nommer modo") + btn("adminResetPw", "🔑 Mot de passe")
+                + btn("adminBan", p.banned ? "✅ Débannir" : "🚫 Bannir", "bg-red-100 hover:bg-red-200 text-red-700") + btn("adminDel", "🗑️ Supprimer le compte", "bg-red-100 hover:bg-red-200 text-red-700");
+            return `${modalHead("⚙️ " + esc(p.pseudo || id))}<button data-m="adminBack" class="text-sm text-blue-600 font-semibold mb-3">← Retour au panneau</button>
+                <div class="flex items-center gap-2 mb-4"><span class="text-3xl">${esc(p.avatar || "🙂")}</span><div><b>${esc(p.pseudo || id)}</b><div class="text-xs text-slate-400">@${esc(id)} · ${tagsOf(id, p)}</div></div></div><div class="flex flex-wrap gap-2">${a}</div>`;
+        }
+
+        /* ===================== FENÊTRES ===================== */
+        function openModal(kind, html) {
+            modalKind = kind;
+            $("modal-body").innerHTML = html;
+            $("modal").classList.remove("hidden");
+        }
+        window.closeModal = () => { $("modal").classList.add("hidden"); modalKind = null; };
+        function refreshModal() {
+            if (modalKind === "admin" && !(document.activeElement && document.activeElement.id === "ad-ann")) renderAdminPanel();
+        }
+        const modalHead = (title) => `<div class="flex justify-between items-center mb-4"><h3 class="text-xl font-black text-slate-900">${title}</h3><button data-m="close" class="text-slate-400 hover:text-slate-700 text-xl">✕</button></div>`;
+
+        window.openHelp = () => {
+            const rows = [["/roll [n]", "Lance un dé"], ["/flip", "Pile ou face"], ["/8ball question", "Boule magique"], ["/me action", "Message d'action"]];
+            const line = ([a, b]) => `<div class="flex justify-between gap-4 py-1.5 border-b border-slate-100 text-sm"><code class="text-blue-700 font-semibold">${esc(a)}</code><span class="text-slate-500 text-right">${esc(b)}</span></div>`;
+            openModal("help", modalHead("❓ Commandes") + rows.map(line).join(""));
+        };
+
+        window.openProfileEditor = () => {
+            if (!me) return;
+            draft = { avatar: me.avatar || "🙂", color: me.color || COLORS[0] };
+            openModal("profile", `${modalHead("👤 Mon profil")}
+                <label class="${LBL}">Pseudo</label><input id="pf-pseudo" value="${esc(me.pseudo)}" maxlength="20" class="${INP}">
+                <label class="${LBL}">Bio</label><input id="pf-bio" value="${esc(me.bio || "")}" maxlength="80" class="${INP}">
+                <label class="${LBL}">Avatar</label><div class="flex flex-wrap gap-2">${AVATARS.map(a => `<button data-m="avatar" data-v="${a}" class="w-10 h-10 text-xl rounded-xl bg-slate-100 hover:bg-slate-200 ${a === draft.avatar ? "ring-2 ring-blue-600" : ""}">${a}</button>`).join("")}</div>
+                <div class="mt-5"><button data-m="saveProfile" class="${BTN}">Enregistrer</button></div>`);
+        };
+
+        function viewProfile(id) {
+            const p = profiles[id];
+            if (!p) return;
+            openModal("view", `${modalHead("Profil")}
+                <div class="text-center">
+                    <div class="text-6xl mb-2">${esc(p.avatar || "🙂")}</div>
+                    <div class="text-xl font-black" style="color:${esc(p.color || "#475569")}">${esc(p.pseudo)}${badge(p)}</div>
+                    <p class="text-sm text-slate-600 mt-2">${esc(p.bio || "Pas de bio.")}</p>
+                    ${id !== currentId ? `<button data-m="dmOpen" data-id="${esc(id)}" class="${BTN} mt-4">✉️ Envoyer un message privé</button>` : ""}
+                </div>`);
+        }
+
+        window.openAdminPanel = () => { if (canMod()) { adminMembersOpen = false; adminManage = null; renderAdminPanel(true); } };
+
+        function renderAdminPanel(open) {
+            const rows = Object.entries(profiles).sort((a, b) => (a[1].pseudo || "").localeCompare(b[1].pseudo || "")).map(([id, p]) => `<div class="flex items-center gap-2 py-2 border-b border-slate-100">
+                    <span class="text-xl">${esc(p.avatar || "🙂")}</span><b class="text-sm text-slate-800">${esc(p.pseudo || id)}</b><span class="text-xs text-slate-400">@${esc(id)}</span><span class="text-xs">${tagsOf(id, p)}</span>
+                    ${(id !== ADMIN_ID && id !== currentId) ? `<button data-m="adminManage" data-id="${esc(id)}" class="ml-auto px-2 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200">⚙️ Gérer</button>` : ""}</div>`).join("");
+
+            const roomRows = Object.entries(allRooms()).map(([id, r]) => `<div class="flex items-center gap-2 py-1.5 border-b border-slate-100 text-sm"><span class="flex-1 truncate">${r.private ? "🔒" : "#"} ${esc(r.name || id)} <span class="text-xs text-slate-400">${r.writers === "admin" ? "· admins" : r.writers === "mods" ? "· modos" : ""}</span></span><button data-m="roomEdit" data-id="${esc(id)}" class="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200">⚙️ Paramètres</button><button data-m="roomDel" data-id="${esc(id)}" class="px-2 py-1 rounded-lg text-xs font-semibold bg-red-100 hover:bg-red-200 text-red-700">🗑️</button></div>`).join("");
+            const adminTools = isAdmin ? `
+                <h4 class="${LBL}">💬 Salons</h4>${roomRows}<button data-m="roomNew" class="${BTN} mt-2">＋ Créer un salon</button>
+                <h4 class="${LBL}">📢 Annonce épinglée</h4>
+                <div class="flex gap-2"><input id="ad-ann" placeholder="Texte de l'annonce..." class="${INP}"><button data-m="adminAnnounce" class="${BTN}">Publier</button></div>` : "";
+
+            const html = (adminManage && profiles[adminManage]) ? manageView(adminManage)
+                : `${modalHead(isAdmin ? "👑 Panneau admin" : "🛡️ Modération")}${adminTools}<button data-m="adminToggleMembers" class="mt-5 w-full flex justify-between items-center text-xs font-bold uppercase tracking-wider text-slate-500"><span>👥 Membres (${Object.keys(profiles).length})</span><span>${adminMembersOpen ? "▲" : "▼"}</span></button>${adminMembersOpen ? rows : ""}`;
+            if (open) openModal("admin", html); else if (modalKind === "admin") $("modal-body").innerHTML = html;
+        }
+
+        $("modal-body").addEventListener("click", async (e) => {
+            const b = e.target.closest("[data-m]");
+            if (!b) return;
+            const d = b.dataset;
+            try {
+                switch (d.m) {
+                    case "close": return closeModal();
+                    case "avatar": draft.avatar = d.v; document.querySelectorAll('[data-m="avatar"]').forEach(x => x.classList.toggle("ring-2", x.dataset.v === d.v)); return;
+                    case "saveProfile":
+                        await update(R("profiles/" + currentId), { pseudo: $("pf-pseudo").value.trim(), bio: $("pf-bio").value.trim(), avatar: draft.avatar });
+                        closeModal(); return toast("Profil mis à jour ✅");
+                    case "pollSend":
+                        await postMessage($("pl-q").value.trim(), "poll", { question: $("pl-q").value.trim(), options: $("pl-o").value.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 6) });
+                        closeModal(); return;
+                    case "imgSend":
+                        await postMessage($("im-cap").value.trim(), null, await pickAtt());
+                        closeModal(); return;
+                    case "hwSend":
+                        const rub = $("hw-r").value;
+                        const att = ($("im-file").files[0] || $("im-url").value.trim()) ? await pickAtt() : {};
+                        await set(push(R("homework/" + rub)), { title: $("hw-t").value.trim(), text: $("hw-x").value.trim(), due: $("hw-d").value, image: att.image || "", ...(att.file ? { file: att.file } : {}), user: currentUser, userId: currentId, createdAt: Date.now() });
+                        closeModal(); renderHomework(); return toast("Publié ✅");
+                    case "roomNew": return openRoomEditor();
+                    case "roomEdit": return openRoomEditor(d.id);
+                    case "roomSave":
+                        if (!isAdmin) return;
+                        let id = $("rm-id").value;
+                        const name = $("rm-name").value.trim();
+                        if (!id) id = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-") + "-" + Math.random().toString(36).slice(2, 5);
+                        await set(R("rooms/" + id), {
+                            name, writers: $("rm-w").value, private: $("rm-priv").checked,
+                            members: $("rm-mem").value.split(",").map(normId).filter(Boolean).join(","),
+                            slow: Math.max(0, +$("rm-slow").value || 0), maxLen: Math.min(500, Math.max(20, +$("rm-max").value || 500)),
+                            polls: $("rm-poll").checked, images: $("rm-img").checked, createdAt: (allRooms()[id] || {}).createdAt || Date.now()
+                        });
+                        closeModal(); return toast("Salon enregistré ✅");
+                    case "roomDel":
+                        if (!isAdmin) return;
+                        if (!confirm("Supprimer ce salon ?")) return;
+                        await remove(R("rooms/" + d.id)); await remove(R("channels/" + d.id));
+                        return toast("🗑️ Salon supprimé.");
+                    case "adminToggleMembers": adminMembersOpen = !adminMembersOpen; return renderAdminPanel();
+                    case "adminManage": adminManage = d.id; return renderAdminPanel();
+                    case "adminBack": adminManage = null; return renderAdminPanel();
+                    case "viewProf": return viewProfile(d.id);
+                    case "dmOpen": return openDm(d.id);
+                    case "dmReply":
+                        const q = inbox[d.key] || {};
+                        const author = (profiles[q.from] || {}).pseudo || q.fromName || "Anonyme";
+                        const txt = q.text || (q.file ? "📎 " + q.file.name : q.image ? "🖼️ Image" : "");
+                        return openDm(d.id, { user: author, text: txt });
+                    case "inboxDel": await remove(R(`inbox/${currentId}/${d.key}`)); return;
+                    case "dmSend":
+                        const to = $("dm-to").value, text = $("dm-t").value.trim();
+                        const attDm = ($("im-file").files[0] || $("im-url").value.trim()) ? await pickAtt() : {};
+                        const replyData = window._activeDmReply || null;
+                        await set(push(R("inbox/" + to)), {
+                            from: currentId,
+                            fromName: currentUser,
+                            text,
+                            createdAt: Date.now(),
+                            read: false,
+                            ...(attDm.image ? { image: attDm.image } : {}),
+                            ...(attDm.file ? { file: attDm.file } : {}),
+                            ...(replyData ? { replyTo: replyData } : {})
+                        });
+                        window._activeDmReply = null;
+                        closeModal(); return toast("✉️ Message envoyé.");
+                    case "adminMute": return setFlag(d.id, "muted", !(profiles[d.id] || {}).muted);
+                    case "adminBan": return setFlag(d.id, "banned", !(profiles[d.id] || {}).banned);
+                    case "adminMod": return setRole(d.id, (profiles[d.id] || {}).role === "mod" ? "member" : "mod");
+                    case "adminAnnounce": return setAnnouncement($("ad-ann").value.trim());
+                }
+            } catch (err) { toast("Erreur : " + err.message); }
+        });
+    </script>
+</body>
+</html>
