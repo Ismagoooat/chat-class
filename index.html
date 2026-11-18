@@ -292,15 +292,21 @@
         const tabCls = (a) => "flex-1 py-2 rounded-lg transition " + (a ? "bg-white shadow text-slate-900" : "text-slate-500");
         function authError(msg) {
             const e = $("auth-error");
-            e.innerText = msg;
-            e.classList.toggle("hidden", !msg);
+            if (e) {
+                e.innerText = msg;
+                e.classList.toggle("hidden", !msg);
+            }
         }
         window.setAuthMode = (m) => {
             authMode = m;
-            $("pseudo-field").classList.toggle("hidden", m !== "register");
-            $("auth-submit").innerText = m === "login" ? "Se connecter" : "Créer mon compte";
-            $("tab-login").className = tabCls(m === "login");
-            $("tab-register").className = tabCls(m === "register");
+            const pseudoField = $("pseudo-field");
+            const authSubmit = $("auth-submit");
+            const tabLogin = $("tab-login");
+            const tabRegister = $("tab-register");
+            if (pseudoField) pseudoField.classList.toggle("hidden", m !== "register");
+            if (authSubmit) authSubmit.innerText = m === "login" ? "Se connecter" : "Créer mon compte";
+            if (tabLogin) tabLogin.className = tabCls(m === "login");
+            if (tabRegister) tabRegister.className = tabCls(m === "register");
             authError("");
         };
 
@@ -350,9 +356,13 @@
         }
 
         window.submitAuth = async () => {
-            const id = normId($("id-input").value);
-            const pw = $("pw-input").value;
-            const pseudo = $("username-input").value.trim();
+            const idInput = $("id-input");
+            const pwInput = $("pw-input");
+            const usernameInput = $("username-input");
+            if (!idInput || !pwInput) return;
+            const id = normId(idInput.value);
+            const pw = pwInput.value;
+            const pseudo = usernameInput ? usernameInput.value.trim() : "";
             authError("");
             try {
                 const user = authMode === "register" ? await doRegister(id, pw, pseudo) : await doLogin(id, pw);
@@ -369,7 +379,8 @@
             isAdmin = id === ADMIN_ID && hash === ADMIN_HASH;
             localStorage.setItem("chat_userid", id);
             localStorage.setItem("chat_hash", hash);
-            $("auth-modal").classList.add("hidden");
+            const authModal = $("auth-modal");
+            if (authModal) authModal.classList.add("hidden");
             boot();
         }
 
@@ -380,8 +391,12 @@
         };
 
         window.onload = async () => {
-            $("auth-modal").querySelectorAll("input").forEach(i => i.addEventListener("keydown", (e) => { if (e.key === "Enter") window.submitAuth(); }));
-            $("sound-btn").innerText = soundOn ? "🔔" : "🔕";
+            const authModal = $("auth-modal");
+            if (authModal) {
+                authModal.querySelectorAll("input").forEach(i => i.addEventListener("keydown", (e) => { if (e.key === "Enter") window.submitAuth(); }));
+            }
+            const soundBtn = $("sound-btn");
+            if (soundBtn) soundBtn.innerText = soundOn ? "🔔" : "🔕";
             if (currentId && currentHash) {
                 try {
                     const admin = currentId === ADMIN_ID && currentHash === ADMIN_HASH;
@@ -392,7 +407,7 @@
                     }
                 } catch (e) {}
             }
-            $("auth-modal").classList.remove("hidden");
+            if (authModal) authModal.classList.remove("hidden");
         };
 
         async function initDefaultRooms() {
@@ -447,8 +462,12 @@
         }
 
         function updateUserUI() {
-            $("current-user-display").innerText = `${me.avatar || "🙂"} @${currentUser}${isAdmin ? " 👑" : me.role === "mod" ? " 🛡️" : ""}`;
-            $("admin-btn").classList.toggle("hidden", !canMod());
+            const userDisp = $("current-user-display");
+            const adminBtn = $("admin-btn");
+            if (userDisp && me) {
+                userDisp.innerText = `${me.avatar || "🙂"} @${currentUser}${isAdmin ? " 👑" : me.role === "mod" ? " 🛡️" : ""}`;
+            }
+            if (adminBtn) adminBtn.classList.toggle("hidden", !canMod());
             applyRoomUI();
         }
 
@@ -465,18 +484,25 @@
 
         function renderMembers() {
             const ids = Object.keys(presence);
-            $("online-count").innerText = ids.length;
-            $("online-list").innerHTML = ids.map(id => {
-                const p = profiles[id] || {};
-                return `<button data-prof="${esc(id)}" class="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-800/60 text-left text-sm">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>${esc(p.avatar || "🙂")}</span>
-                    <span class="truncate">${esc(p.pseudo || id)}</span><span>${badge(p)}</span></button>`;
-            }).join("");
+            const onlineCount = $("online-count");
+            const onlineList = $("online-list");
+            if (onlineCount) onlineCount.innerText = ids.length;
+            if (onlineList) {
+                onlineList.innerHTML = ids.map(id => {
+                    const p = profiles[id] || {};
+                    return `<button data-prof="${esc(id)}" class="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-800/60 text-left text-sm">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>${esc(p.avatar || "🙂")}</span>
+                        <span class="truncate">${esc(p.pseudo || id)}</span><span>${badge(p)}</span></button>`;
+                }).join("");
+            }
         }
-        $("online-list").addEventListener("click", (e) => {
-            const b = e.target.closest("[data-prof]");
-            if (b) viewProfile(b.dataset.prof);
-        });
+        const onlineListEl = $("online-list");
+        if (onlineListEl) {
+            onlineListEl.addEventListener("click", (e) => {
+                const b = e.target.closest("[data-prof]");
+                if (b) viewProfile(b.dataset.prof);
+            });
+        }
 
         /* ===================== SALONS & MESSAGES ===================== */
         const allRooms = () => rooms;
@@ -498,12 +524,20 @@
         }
         function renderRooms() {
             const cls = (on) => "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition channel-btn " + (on ? "bg-blue-600 text-white font-semibold shadow-sm" : "hover:bg-slate-800/60 text-slate-400 hover:text-white font-medium");
-            $("room-list").innerHTML = Object.entries(allRooms()).filter(([, r]) => canSee(r)).map(([id, r]) =>
-                `<button data-room="${esc(id)}" class="${cls(id === currentChannel)}"><span class="opacity-60">${r.private ? "🔒" : "#"}</span> ${esc(r.name || id)}</button>`).join("");
-            $("hw-btn").className = cls(currentChannel === "__hw") + " mt-3";
-            $("room-add").classList.toggle("hidden", !isAdmin);
+            const roomList = $("room-list");
+            const hwBtn = $("hw-btn");
+            const roomAdd = $("room-add");
+            if (roomList) {
+                roomList.innerHTML = Object.entries(allRooms()).filter(([, r]) => canSee(r)).map(([id, r]) =>
+                    `<button data-room="${esc(id)}" class="${cls(id === currentChannel)}"><span class="opacity-60">${r.private ? "🔒" : "#"}</span> ${esc(r.name || id)}</button>`).join("");
+            }
+            if (hwBtn) hwBtn.className = cls(currentChannel === "__hw") + " mt-3";
+            if (roomAdd) roomAdd.classList.toggle("hidden", !isAdmin);
         }
-        $("room-list").addEventListener("click", (e) => { const b = e.target.closest("[data-room]"); if (b) switchChannel(b.dataset.room); });
+        const roomListEl = $("room-list");
+        if (roomListEl) {
+            roomListEl.addEventListener("click", (e) => { const b = e.target.closest("[data-room]"); if (b) switchChannel(b.dataset.room); });
+        }
 
         function writeBlock() {
             if (currentChannel === "__hw") return "";
@@ -515,11 +549,14 @@
         }
         function applyRoomUI() {
             const r = roomCfg(), why = writeBlock(), inp = $("message-input");
+            if (!inp) return;
             inp.disabled = !!why;
             inp.maxLength = r.maxLen || 500;
             inp.placeholder = why || "Écris ton message ici... (/help pour les commandes)";
-            $("poll-btn").classList.toggle("hidden", r.polls === false);
-            $("img-btn").classList.toggle("hidden", r.images === false);
+            const pollBtn = $("poll-btn");
+            const imgBtn = $("img-btn");
+            if (pollBtn) pollBtn.classList.toggle("hidden", r.polls === false);
+            if (imgBtn) imgBtn.classList.toggle("hidden", r.images === false);
         }
 
         window.switchChannel = (channel) => {
@@ -528,17 +565,23 @@
             closeMenu();
             currentChannel = channel;
             const hw = channel === "__hw";
-            $("active-channel-title").innerText = hw ? "📚 Espace devoirs" : `# ${roomName(channel)}`;
-            $("messages-container").classList.toggle("hidden", hw);
-            $("composer").classList.toggle("hidden", hw);
-            $("hw-zone").classList.toggle("hidden", !hw);
+            const chanTitle = $("active-channel-title");
+            const msgCont = $("messages-container");
+            const composer = $("composer");
+            const hwZone = $("hw-zone");
+            const typingInd = $("typing-indicator");
+
+            if (chanTitle) chanTitle.innerText = hw ? "📚 Espace devoirs" : `# ${roomName(channel)}`;
+            if (msgCont) msgCont.classList.toggle("hidden", hw);
+            if (composer) composer.classList.toggle("hidden", hw);
+            if (hwZone) hwZone.classList.toggle("hidden", !hw);
             renderRooms();
             applyRoomUI();
             if (unsubHw) { unsubHw(); unsubHw = null; }
             if (hw) {
                 if (unsubMessages) { unsubMessages(); unsubMessages = null; }
                 if (unsubTyping) { unsubTyping(); unsubTyping = null; }
-                $("typing-indicator").classList.add("hidden");
+                if (typingInd) typingInd.classList.add("hidden");
                 return loadHomework();
             }
             loadMessages();
@@ -553,7 +596,8 @@
             if (unsubMessages) unsubMessages();
             lastMessages = [];
             stickBottom = true;
-            $("messages-container").innerHTML = "";
+            const msgCont = $("messages-container");
+            if (msgCont) msgCont.innerHTML = "";
             let first = true;
 
             const messagesRef = query(R('channels/' + currentChannel), limitToLast(60));
@@ -640,6 +684,7 @@
 
         function renderMessages() {
             const container = $("messages-container");
+            if (!container) return;
             const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
             const st = container.scrollTop;
             let list = lastMessages;
@@ -661,7 +706,10 @@
             if (stickBottom || nearBottom) { container.scrollTop = container.scrollHeight; stickBottom = false; } else container.scrollTop = st;
         }
 
-        $("search-input").addEventListener("input", (e) => { searchTerm = e.target.value.trim().toLowerCase(); renderMessages(); });
+        const searchInputEl = $("search-input");
+        if (searchInputEl) {
+            searchInputEl.addEventListener("input", (e) => { searchTerm = e.target.value.trim().toLowerCase(); renderMessages(); });
+        }
 
         function closeMenu() { if (menuEl) { menuEl.remove(); menuEl = null; } }
         function openMenu(btn, key) {
@@ -704,18 +752,32 @@
             runAct(b);
         });
         document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
-        $("messages-container").addEventListener("scroll", closeMenu);
+        const msgContainerEl = $("messages-container");
+        if (msgContainerEl) msgContainerEl.addEventListener("scroll", closeMenu);
 
         function startReply(key) {
             const m = lastMessages.find(x => x.key === key);
             if (!m) return;
             const t = m.type === "poll" ? "📊 " + (m.question || "") : (m.text || (m.image ? "🖼️ Image" : m.file ? "📎 " + m.file.name : ""));
             replyTo = { key, user: displayName(m), text: t.slice(0, 80) };
-            $("reply-text").innerText = `${replyTo.user} : ${replyTo.text}`;
-            $("reply-bar").classList.remove("hidden"); $("reply-bar").classList.add("flex");
-            $("message-input").focus();
+            const replyText = $("reply-text");
+            const replyBar = $("reply-bar");
+            const msgInput = $("message-input");
+            if (replyText) replyText.innerText = `${replyTo.user} : ${replyTo.text}`;
+            if (replyBar) {
+                replyBar.classList.remove("hidden");
+                replyBar.classList.add("flex");
+            }
+            if (msgInput) msgInput.focus();
         }
-        window.cancelReply = () => { replyTo = null; $("reply-bar").classList.add("hidden"); $("reply-bar").classList.remove("flex"); };
+        window.cancelReply = () => {
+            replyTo = null;
+            const replyBar = $("reply-bar");
+            if (replyBar) {
+                replyBar.classList.add("hidden");
+                replyBar.classList.remove("flex");
+            }
+        };
         function gotoMsg(key) {
             const el = $("msg-" + key);
             if (!el) return toast("Le message d'origine n'est plus dans l'historique chargé.");
@@ -769,7 +831,8 @@
             typingActive = false;
             remove(R(`typing/${currentChannel}/${currentId}`)).catch(() => {});
         }
-        $("message-input").addEventListener("blur", stopTyping);
+        const messageInputEl = $("message-input");
+        if (messageInputEl) messageInputEl.addEventListener("blur", stopTyping);
         addEventListener("pagehide", stopTyping);
 
         function setupTypingListener() {
@@ -781,8 +844,10 @@
         function renderTyping() {
             const names = Object.entries(typingData).filter(([id, ts]) => id !== currentId && typeof ts === "number" && nowS() - ts < 6000)
                 .map(([id]) => (profiles[id] && profiles[id].pseudo) || id);
-            $("typing-indicator").classList.toggle("hidden", !names.length || currentChannel === "__hw");
-            $("typing-text").innerText = names.length === 1 ? `${names[0]} est en train d'écrire...` : "Plusieurs personnes écrivent...";
+            const typingInd = $("typing-indicator");
+            const typingText = $("typing-text");
+            if (typingInd) typingInd.classList.toggle("hidden", !names.length || currentChannel === "__hw");
+            if (typingText) typingText.innerText = names.length === 1 ? `${names[0]} est en train d'écrire...` : "Plusieurs personnes écrivent...";
         }
         setInterval(renderTyping, 2000);
 
@@ -803,6 +868,7 @@
         window.sendMessage = async (e) => {
             e.preventDefault();
             const textInput = $("message-input");
+            if (!textInput) return;
             const text = textInput.value.trim();
 
             if (!text || !currentId) return;
@@ -929,10 +995,14 @@
             onValue(R("announcement"), (s) => {
                 const v = s.val();
                 const b = $("announce-banner");
+                if (!b) return;
                 if (!v || !v.text) { b.classList.add("hidden"); return; }
-                $("announce-text").innerText = v.text;
-                $("announce-by").innerText = "— " + v.by;
-                $("announce-clear").classList.toggle("hidden", !isAdmin);
+                const annText = $("announce-text");
+                const annBy = $("announce-by");
+                const annClear = $("announce-clear");
+                if (annText) annText.innerText = v.text;
+                if (annBy) annBy.innerText = "— " + v.by;
+                if (annClear) annClear.classList.toggle("hidden", !isAdmin);
                 b.classList.remove("hidden");
             });
         }
@@ -963,7 +1033,7 @@
                 setTimeout(() => el.remove(), 8000);
             }
         }
-        function timedClass(el, cls, ms) { el.classList.add(cls); setTimeout(() => el.classList.remove(cls), ms); }
+        function timedClass(el, cls, ms) { if (el) { el.classList.add(cls); setTimeout(() => el.classList.remove(cls), ms); } }
         function runEffect(v) {
             toast(`👑 ${v.by} a lancé : ${v.type}`);
             switch (v.type) {
@@ -987,7 +1057,7 @@
             <div class="mt-4"><button data-m="pollSend" class="${BTN}">Publier</button></div>`);
 
         window.openImageSender = () => openModal("imgsend", `${modalHead("📎 Partager une image ou un fichier")}
-            <label class="${LBL}">Depuis ton appareil (image, pdf, docx, odt, txt… 600 Ko max)</label><input type="file" id="im-file" accept="image/*,.pdf,.doc,.docx,.odt,.ods,.odp,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,.md" class="${INP}">
+            <label class="${LBL}">Depuis ton appareil (image, pdf, docx, odt, txt… 600 Ko max)</label><input type="file" id="modal-file-input" accept="image/*,.pdf,.doc,.docx,.odt,.ods,.odp,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,.md" class="${INP}">
             <label class="${LBL}">… ou un lien (https://…)</label><input id="im-url" placeholder="https://exemple.com/image.jpg" class="${INP}">
             <label class="${LBL}">Légende (facultatif)</label><input id="im-cap" maxlength="200" class="${INP}">
             <div class="mt-4"><button data-m="imgSend" class="${BTN}">Envoyer</button></div>`);
@@ -1006,7 +1076,10 @@
             });
         }
         async function pickImage() {
-            const f = $("im-file").files[0], u = $("im-url").value.trim();
+            const fileInput = document.querySelector('#modal-body input[type="file"]');
+            const urlInput = document.getElementById('im-url');
+            const f = fileInput ? fileInput.files[0] : null;
+            const u = urlInput ? urlInput.value.trim() : "";
             if (f) { const d = await fileToDataUrl(f); if (d.length > 300000) throw new Error("Image trop lourde, même compressée."); return d; }
             if (u) { if (!safeImg(u)) throw new Error("Le lien doit commencer par https://"); return u; }
             throw new Error("Choisis un fichier ou colle un lien.");
@@ -1029,7 +1102,8 @@
             try {
                 const att = f.type.startsWith("image/") ? { image: await fileToDataUrl(f) } : { file: await uploadFile(f) };
                 hwCommentFiles[key] = att;
-                $(`hw-file-preview-${key}`).innerText = `📎 ${f.name} joint`;
+                const prev = $(`hw-file-preview-${key}`);
+                if (prev) prev.innerText = `📎 ${f.name} joint`;
             } catch (err) { toast("Erreur fichier : " + err.message); }
         };
 
@@ -1102,76 +1176,83 @@
             };
 
             const list = hwPosts.filter(h => hwTab === "all" || h.rub === hwTab).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-            $("hw-zone").innerHTML = `<div class="max-w-3xl mx-auto"><div class="flex flex-wrap gap-2 items-center mb-4">${tabs}<button onclick="openHwEditor()" class="ml-auto ${BTN}">＋ Ajouter</button></div>
-                <div class="space-y-3">${list.length ? list.map(card).join("") : '<p class="text-center text-slate-400 py-10">Rien dans cette rubrique pour l\'instant.</p>'}</div></div>`;
+            const hwZone = $("hw-zone");
+            if (hwZone) {
+                hwZone.innerHTML = `<div class="max-w-3xl mx-auto"><div class="flex flex-wrap gap-2 items-center mb-4">${tabs}<button onclick="openHwEditor()" class="ml-auto ${BTN}">＋ Ajouter</button></div>
+                    <div class="space-y-3">${list.length ? list.map(card).join("") : '<p class="text-center text-slate-400 py-10">Rien dans cette rubrique pour l\'instant.</p>'}</div></div>`;
+            }
         }
 
-        $("hw-zone").addEventListener("click", async (e) => {
-            const t = e.target.closest("[data-hw]");
-            const d = e.target.closest("[data-hw-del]");
-            const reactBtn = e.target.closest("[data-hw-react]");
-            const commBtn = e.target.closest("[data-hw-addcomm]");
-            const commDelBtn = e.target.closest("[data-hw-delcomm]");
+        const hwZoneEl = $("hw-zone");
+        if (hwZoneEl) {
+            hwZoneEl.addEventListener("click", async (e) => {
+                const t = e.target.closest("[data-hw]");
+                const d = e.target.closest("[data-hw-del]");
+                const reactBtn = e.target.closest("[data-hw-react]");
+                const commBtn = e.target.closest("[data-hw-addcomm]");
+                const commDelBtn = e.target.closest("[data-hw-delcomm]");
 
-            if (t) { hwTab = t.dataset.hw; renderHomework(); }
-            if (d && confirm("Supprimer cette publication ?")) {
-                try {
-                    const h = hwPosts.find(x => x.key === d.dataset.hwDel);
-                    await remove(R(`homework/${d.dataset.rub}/${d.dataset.hwDel}`));
-                    if (h && h.file) remove(R("files/" + h.file.id));
-                } catch (err) { toast("Erreur : " + err.message); }
-            }
-            if (reactBtn) {
-                const key = reactBtn.dataset.hwReact;
-                const rub = reactBtn.dataset.rub;
-                const emoji = reactBtn.dataset.emoji;
-                try {
-                    const post = hwPosts.find(x => x.key === key);
-                    const has = post && post.reactions && post.reactions[emoji] && post.reactions[emoji][currentId];
-                    const refPath = R(`homework/${rub}/${key}/reactions/${emoji}/${currentId}`);
-                    if (has) await remove(refPath); else await set(refPath, true);
-                } catch(err) { toast("Erreur : " + err.message); }
-            }
-            if (commBtn) {
-                const key = commBtn.dataset.hwAddcomm;
-                const rub = commBtn.dataset.rub;
-                const input = $(`hw-comm-${key}`);
-                const text = input ? input.value.trim() : "";
-                const att = hwCommentFiles[key] || {};
-                if (!text && !att.image && !att.file) return;
-                if (me && me.muted && !isAdmin) return toast("🔇 Tu es muet.");
-                try {
-                    await set(push(R(`homework/${rub}/${key}/comments`)), {
-                        text,
-                        user: currentUser,
-                        userId: currentId,
-                        createdAt: Date.now(),
-                        ...(att.image ? { image: att.image } : {}),
-                        ...(att.file ? { file: att.file } : {})
-                    });
-                    input.value = "";
-                    delete hwCommentFiles[key];
-                    $(`hw-file-preview-${key}`).innerText = "";
-                } catch(err) { toast("Erreur : " + err.message); }
-            }
-            if (commDelBtn) {
-                const ck = commDelBtn.dataset.hwDelcomm;
-                const rub = commDelBtn.dataset.rub;
-                const key = commDelBtn.dataset.key;
-                if (confirm("Supprimer ce commentaire ?")) {
+                if (t) { hwTab = t.dataset.hw; renderHomework(); }
+                if (d && confirm("Supprimer cette publication ?")) {
                     try {
-                        await remove(R(`homework/${rub}/${key}/comments/${ck}`));
+                        const h = hwPosts.find(x => x.key === d.dataset.hwDel);
+                        await remove(R(`homework/${d.dataset.rub}/${d.dataset.hwDel}`));
+                        if (h && h.file) remove(R("files/" + h.file.id));
+                    } catch (err) { toast("Erreur : " + err.message); }
+                }
+                if (reactBtn) {
+                    const key = reactBtn.dataset.hwReact;
+                    const rub = reactBtn.dataset.rub;
+                    const emoji = reactBtn.dataset.emoji;
+                    try {
+                        const post = hwPosts.find(x => x.key === key);
+                        const has = post && post.reactions && post.reactions[emoji] && post.reactions[emoji][currentId];
+                        const refPath = R(`homework/${rub}/${key}/reactions/${emoji}/${currentId}`);
+                        if (has) await remove(refPath); else await set(refPath, true);
                     } catch(err) { toast("Erreur : " + err.message); }
                 }
-            }
-        });
+                if (commBtn) {
+                    const key = commBtn.dataset.hwAddcomm;
+                    const rub = commBtn.dataset.rub;
+                    const input = $(`hw-comm-${key}`);
+                    const text = input ? input.value.trim() : "";
+                    const att = hwCommentFiles[key] || {};
+                    if (!text && !att.image && !att.file) return;
+                    if (me && me.muted && !isAdmin) return toast("🔇 Tu es muet.");
+                    try {
+                        await set(push(R(`homework/${rub}/${key}/comments`)), {
+                            text,
+                            user: currentUser,
+                            userId: currentId,
+                            createdAt: Date.now(),
+                            ...(att.image ? { image: att.image } : {}),
+                            ...(att.file ? { file: att.file } : {})
+                        });
+                        input.value = "";
+                        delete hwCommentFiles[key];
+                        const prev = $(`hw-file-preview-${key}`);
+                        if (prev) prev.innerText = "";
+                    } catch(err) { toast("Erreur : " + err.message); }
+                }
+                if (commDelBtn) {
+                    const ck = commDelBtn.dataset.hwDelcomm;
+                    const rub = commDelBtn.dataset.rub;
+                    const key = commDelBtn.dataset.key;
+                    if (confirm("Supprimer ce commentaire ?")) {
+                        try {
+                            await remove(R(`homework/${rub}/${key}/comments/${ck}`));
+                        } catch(err) { toast("Erreur : " + err.message); }
+                    }
+                }
+            });
+        }
 
         window.openHwEditor = () => openModal("hw", `${modalHead("＋ Publier dans l'espace devoirs")}
             <label class="${LBL}">Rubrique</label><select id="hw-r" class="${INP}">${HW_TABS.map(([k, l]) => `<option value="${k}" ${k === (hwTab === "all" ? "aide" : hwTab) ? "selected" : ""}>${l}</option>`).join("")}</select>
             <label class="${LBL}">Titre</label><input id="hw-t" maxlength="100" class="${INP}">
             <label class="${LBL}">Détails</label><textarea id="hw-x" rows="4" maxlength="1500" class="${INP}"></textarea>
             <label class="${LBL}">Date limite (facultatif)</label><input type="date" id="hw-d" class="${INP}">
-            <label class="${LBL}">Image ou fichier (pdf, docx, odt… 600 Ko max)</label><input type="file" id="im-file" accept="image/*,.pdf,.doc,.docx,.odt,.ods,.odp,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,.md" class="${INP}"><input id="im-url" placeholder="… ou lien d'image https://" class="${INP} mt-2">
+            <label class="${LBL}">Image ou fichier (pdf, docx, odt… 600 Ko max)</label><input type="file" id="modal-file-input" accept="image/*,.pdf,.doc,.docx,.odt,.ods,.odp,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,.md" class="${INP}"><input id="im-url" placeholder="… ou lien d'image https://" class="${INP} mt-2">
             <div class="mt-4"><button data-m="hwSend" class="${BTN}">Publier</button></div>`);
 
         window.openRoomEditor = (id) => {
@@ -1207,7 +1288,8 @@
             return { id: ref.key, name: f.name.slice(0, 80), ext, size: f.size };
         }
         async function pickAtt() {
-            const f = $("im-file").files[0];
+            const fileInput = document.querySelector('#modal-body input[type="file"]');
+            const f = fileInput ? fileInput.files[0] : null;
             if (f && !f.type.startsWith("image/")) return { file: await uploadFile(f) };
             return { image: await pickImage() };
         }
@@ -1238,7 +1320,11 @@
                 const prev = new Set(Object.keys(inbox));
                 inbox = snap.val() || {};
                 const n = Object.values(inbox).filter(m => !m.read).length;
-                $("inbox-count").innerText = n; $("inbox-count").classList.toggle("hidden", !n);
+                const inboxCount = $("inbox-count");
+                if (inboxCount) {
+                    inboxCount.innerText = n;
+                    inboxCount.classList.toggle("hidden", !n);
+                }
                 if (!inboxFirst && Object.entries(inbox).some(([k, m]) => !prev.has(k) && !m.read)) { playSound(); toast("✉️ Nouveau message privé !"); }
                 inboxFirst = false;
                 if (modalKind === "inbox") { renderInbox(); markRead(); }
@@ -1260,7 +1346,10 @@
                     <div class="mt-2 flex gap-2"><button data-m="dmReply" data-id="${esc(m.from)}" data-key="${m.key}" class="px-3 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700">↩️ Répondre</button>
                     <button data-m="inboxDel" data-key="${m.key}" class="px-2 py-1 rounded-lg text-xs bg-slate-100 hover:bg-red-100">🗑️</button></div></div>`;
             }).join("") : '<p class="text-center text-slate-400 py-8">Aucun message privé pour l\'instant.</p>');
-            if (open) openModal("inbox", html); else if (modalKind === "inbox") $("modal-body").innerHTML = html;
+            if (open) openModal("inbox", html); else if (modalKind === "inbox") {
+                const modalBody = $("modal-body");
+                if (modalBody) modalBody.innerHTML = html;
+            }
         }
 
         window.openDm = (to, quoteObj) => {
@@ -1274,7 +1363,7 @@
                 ${quoteDisplay}
                 <textarea id="dm-t" rows="4" maxlength="500" class="${INP} mt-2" placeholder="Ton message…"></textarea>
                 <label class="${LBL}">Image ou document (facultatif)</label>
-                <input type="file" id="im-file" accept="image/*,.pdf,.doc,.docx,.odt,.ods,.odp,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,.md" class="${INP}"><input id="im-url" placeholder="… ou lien d'image https://" class="${INP} mt-2">
+                <input type="file" id="modal-file-input" accept="image/*,.pdf,.doc,.docx,.odt,.ods,.odp,.txt,.rtf,.csv,.xls,.xlsx,.ppt,.pptx,.md" class="${INP}"><input id="im-url" placeholder="… ou lien d'image https://" class="${INP} mt-2">
                 <input type="hidden" id="dm-to" value="${esc(to)}"><div class="mt-4"><button data-m="dmSend" class="${BTN}">Envoyer</button></div>`);
         };
 
@@ -1288,7 +1377,7 @@
                     <label class="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer"><input type="radio" name="sug-type" value="bug"> 🤬 Bug</label>
                 </div>
                 <label class="${LBL}">Description</label><textarea id="sug-desc" rows="4" maxlength="1000" class="${INP}" placeholder="Explique ton idée ou ton bug..."></textarea>
-                <label class="${LBL}">Capture d'écran (screenshot possible)</label><input type="file" id="im-file" accept="image/*" class="${INP}">
+                <label class="${LBL}">Capture d'écran (screenshot possible)</label><input type="file" id="modal-file-input" accept="image/*" class="${INP}">
                 <label class="flex items-center gap-2 text-sm text-slate-700 mt-3 font-medium cursor-pointer"><input type="checkbox" id="sug-public" checked> Visible par tout le monde (dans les idées des autres)</label>
                 <div class="mt-5 flex gap-2">
                     <button data-m="sugSend" class="${BTN}">Envoyer</button>
@@ -1398,7 +1487,10 @@
 
             const html = (adminManage && profiles[adminManage]) ? manageView(adminManage)
                 : `${modalHead(isAdmin ? "👑 Panneau admin" : "🛡️ Modération")}${adminTools}<button data-m="adminToggleMembers" class="mt-5 w-full flex justify-between items-center text-xs font-bold uppercase tracking-wider text-slate-500"><span>👥 Membres (${Object.keys(profiles).length})</span><span>${adminMembersOpen ? "▲" : "▼"}</span></button>${adminMembersOpen ? rows : ""}`;
-            if (open) openModal("admin", html); else if (modalKind === "admin") $("modal-body").innerHTML = html;
+            if (open) openModal("admin", html); else if (modalKind === "admin") {
+                const modalBody = $("modal-body");
+                if (modalBody) modalBody.innerHTML = html;
+            }
         }
 
         window.toggleFunSwitch = async (val) => {
@@ -1413,105 +1505,110 @@
             openModal("help", modalHead("❓ Commandes") + rows.map(line).join(""));
         };
 
-        $("modal-body").addEventListener("click", async (e) => {
-            const b = e.target.closest("[data-m]");
-            if (!b) return;
-            const d = b.dataset;
-            try {
-                switch (d.m) {
-                    case "close": return closeModal();
-                    case "avatar": draft.avatar = d.v; document.querySelectorAll('[data-m="avatar"]').forEach(x => x.classList.toggle("ring-2", x.dataset.v === d.v)); return;
-                    case "saveProfile":
-                        await update(R("profiles/" + currentId), { pseudo: $("pf-pseudo").value.trim(), bio: $("pf-bio").value.trim(), avatar: draft.avatar });
-                        closeModal(); return toast("Profil mis à jour ✅");
-                    case "pollSend":
-                        await postMessage($("pl-q").value.trim(), "poll", { question: $("pl-q").value.trim(), options: $("pl-o").value.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 6) });
-                        closeModal(); return;
-                    case "imgSend":
-                        await postMessage($("im-cap").value.trim(), null, await pickAtt());
-                        closeModal(); return;
-                    case "hwSend":
-                        const rub = $("hw-r").value;
-                        const att = ($("im-file").files[0] || $("im-url").value.trim()) ? await pickAtt() : {};
-                        await set(push(R("homework/" + rub)), { title: $("hw-t").value.trim(), text: $("hw-x").value.trim(), due: $("hw-d").value, image: att.image || "", ...(att.file ? { file: att.file } : {}), user: currentUser, userId: currentId, createdAt: Date.now() });
-                        closeModal(); renderHomework(); return toast("Publié ✅");
-                    case "roomNew": return openRoomEditor();
-                    case "roomEdit": return openRoomEditor(d.id);
-                    case "roomSave":
-                        if (!isAdmin) return;
-                        let id = $("rm-id").value;
-                        const name = $("rm-name").value.trim();
-                        if (!id) id = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-") + "-" + Math.random().toString(36).slice(2, 5);
-                        await set(R("rooms/" + id), {
-                            name, writers: $("rm-w").value, private: $("rm-priv").checked,
-                            members: $("rm-mem").value.split(",").map(normId).filter(Boolean).join(","),
-                            slow: Math.max(0, +$("rm-slow").value || 0), maxLen: Math.min(500, Math.max(20, +$("rm-max").value || 500)),
-                            polls: $("rm-poll").checked, images: $("rm-img").checked, createdAt: (allRooms()[id] || {}).createdAt || Date.now()
-                        });
-                        closeModal(); return toast("Salon enregistré ✅");
-                    case "roomDel":
-                        if (!isAdmin) return;
-                        if (!confirm("Supprimer ce salon ?")) return;
-                        await remove(R("rooms/" + d.id)); await remove(R("channels/" + d.id));
-                        return toast("🗑️ Salon supprimé.");
-                    case "adminToggleMembers": adminMembersOpen = !adminMembersOpen; return renderAdminPanel();
-                    case "adminManage": adminManage = d.id; return renderAdminPanel();
-                    case "adminBack": adminManage = null; return renderAdminPanel();
-                    case "viewProf": return viewProfile(d.id);
-                    case "dmOpen": return openDm(d.id);
-                    case "dmReply":
-                        const q = inbox[d.key] || {};
-                        const author = (profiles[q.from] || {}).pseudo || q.fromName || "Anonyme";
-                        const txt = q.text || (q.file ? "📎 " + q.file.name : q.image ? "🖼️ Image" : "");
-                        return openDm(d.id, { user: author, text: txt });
-                    case "inboxDel": await remove(R(`inbox/${currentId}/${d.key}`)); return;
-                    case "dmSend":
-                        const to = $("dm-to").value, text = $("dm-t").value.trim();
-                        const attDm = ($("im-file").files[0] || $("im-url").value.trim()) ? await pickAtt() : {};
-                        const replyData = window._activeDmReply || null;
-                        await set(push(R("inbox/" + to)), {
-                            from: currentId,
-                            fromName: currentUser,
-                            text,
-                            createdAt: Date.now(),
-                            read: false,
-                            ...(attDm.image ? { image: attDm.image } : {}),
-                            ...(attDm.file ? { file: attDm.file } : {}),
-                            ...(replyData ? { replyTo: replyData } : {})
-                        });
-                        window._activeDmReply = null;
-                        closeModal(); return toast("✉️ Message envoyé.");
-                    case "sugSend": {
-                        const sugType = document.querySelector('input[name="sug-type"]:checked').value;
-                        const desc = $("sug-desc").value.trim();
-                        if (!desc) return toast("Écris une description.");
-                        const att = ($("im-file").files[0]) ? await pickAtt() : {};
-                        const isPub = $("sug-public").checked;
-                        await set(push(R("suggestions")), {
-                            type: sugType,
-                            text: desc,
-                            public: isPub,
-                            author: currentUser,
-                            userId: currentId,
-                            createdAt: Date.now(),
-                            ...(att.image ? { image: att.image } : {})
-                        });
-                        closeModal();
-                        return toast("💡 Merci pour ton retour !");
+        const modalBodyEl = $("modal-body");
+        if (modalBodyEl) {
+            modalBodyEl.addEventListener("click", async (e) => {
+                const b = e.target.closest("[data-m]");
+                if (!b) return;
+                const d = b.dataset;
+                try {
+                    switch (d.m) {
+                        case "close": return closeModal();
+                        case "avatar": draft.avatar = d.v; document.querySelectorAll('[data-m="avatar"]').forEach(x => x.classList.toggle("ring-2", x.dataset.v === d.v)); return;
+                        case "saveProfile":
+                            await update(R("profiles/" + currentId), { pseudo: $("pf-pseudo").value.trim(), bio: $("pf-bio").value.trim(), avatar: draft.avatar });
+                            closeModal(); return toast("Profil mis à jour ✅");
+                        case "pollSend":
+                            await postMessage($("pl-q").value.trim(), "poll", { question: $("pl-q").value.trim(), options: $("pl-o").value.split("\n").map(x => x.trim()).filter(Boolean).slice(0, 6) });
+                            closeModal(); return;
+                        case "imgSend":
+                            await postMessage($("im-cap").value.trim(), null, await pickAtt());
+                            closeModal(); return;
+                        case "hwSend":
+                            const rub = $("hw-r").value;
+                            const att = (document.querySelector('#modal-body input[type="file"]') && document.querySelector('#modal-body input[type="file"]').files[0] || $("im-url").value.trim()) ? await pickAtt() : {};
+                            await set(push(R("homework/" + rub)), { title: $("hw-t").value.trim(), text: $("hw-x").value.trim(), due: $("hw-d").value, image: att.image || "", ...(att.file ? { file: att.file } : {}), user: currentUser, userId: currentId, createdAt: Date.now() });
+                            closeModal(); renderHomework(); return toast("Publié ✅");
+                        case "roomNew": return openRoomEditor();
+                        case "roomEdit": return openRoomEditor(d.id);
+                        case "roomSave":
+                            if (!isAdmin) return;
+                            let id = $("rm-id").value;
+                            const name = $("rm-name").value.trim();
+                            if (!id) id = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-") + "-" + Math.random().toString(36).slice(2, 5);
+                            await set(R("rooms/" + id), {
+                                name, writers: $("rm-w").value, private: $("rm-priv").checked,
+                                members: $("rm-mem").value.split(",").map(normId).filter(Boolean).join(","),
+                                slow: Math.max(0, +$("rm-slow").value || 0), maxLen: Math.min(500, Math.max(20, +$("rm-max").value || 500)),
+                                polls: $("rm-poll").checked, images: $("rm-img").checked, createdAt: (allRooms()[id] || {}).createdAt || Date.now()
+                            });
+                            closeModal(); return toast("Salon enregistré ✅");
+                        case "roomDel":
+                            if (!isAdmin) return;
+                            if (!confirm("Supprimer ce salon ?")) return;
+                            await remove(R("rooms/" + d.id)); await remove(R("channels/" + d.id));
+                            return toast("🗑️ Salon supprimé.");
+                        case "adminToggleMembers": adminMembersOpen = !adminMembersOpen; return renderAdminPanel();
+                        case "adminManage": adminManage = d.id; return renderAdminPanel();
+                        case "adminBack": adminManage = null; return renderAdminPanel();
+                        case "viewProf": return viewProfile(d.id);
+                        case "dmOpen": return openDm(d.id);
+                        case "dmReply":
+                            const q = inbox[d.key] || {};
+                            const author = (profiles[q.from] || {}).pseudo || q.fromName || "Anonyme";
+                            const txt = q.text || (q.file ? "📎 " + q.file.name : q.image ? "🖼️ Image" : "");
+                            return openDm(d.id, { user: author, text: txt });
+                        case "inboxDel": await remove(R(`inbox/${currentId}/${d.key}`)); return;
+                        case "dmSend":
+                            const to = $("dm-to").value, text = $("dm-t").value.trim();
+                            const attDm = (document.querySelector('#modal-body input[type="file"]') && document.querySelector('#modal-body input[type="file"]').files[0] || $("im-url").value.trim()) ? await pickAtt() : {};
+                            const replyData = window._activeDmReply || null;
+                            await set(push(R("inbox/" + to)), {
+                                from: currentId,
+                                fromName: currentUser,
+                                text,
+                                createdAt: Date.now(),
+                                read: false,
+                                ...(attDm.image ? { image: attDm.image } : {}),
+                                ...(attDm.file ? { file: attDm.file } : {}),
+                                ...(replyData ? { replyTo: replyData } : {})
+                            });
+                            window._activeDmReply = null;
+                            closeModal(); return toast("✉️ Message envoyé.");
+                        case "sugSend": {
+                            const sugTypeEl = document.querySelector('input[name="sug-type"]:checked');
+                            const sugType = sugTypeEl ? sugTypeEl.value : "idea";
+                            const desc = $("sug-desc").value.trim();
+                            if (!desc) return toast("Écris une description.");
+                            const fileInput = document.querySelector('#modal-body input[type="file"]');
+                            const att = (fileInput && fileInput.files[0]) ? await pickAtt() : {};
+                            const isPub = $("sug-public").checked;
+                            await set(push(R("suggestions")), {
+                                type: sugType,
+                                text: desc,
+                                public: isPub,
+                                author: currentUser,
+                                userId: currentId,
+                                createdAt: Date.now(),
+                                ...(att.image ? { image: att.image } : {})
+                            });
+                            closeModal();
+                            return toast("💡 Merci pour ton retour !");
+                        }
+                        case "sugList": return loadSuggestionsList();
+                        case "sugListAdmin": return loadSuggestionsList();
+                        case "sugDel":
+                            await remove(R(`suggestions/${d.key}`));
+                            return loadSuggestionsList();
+                        case "openSuggestions": return openSuggestionsModal();
+                        case "adminMute": return setFlag(d.id, "muted", !(profiles[d.id] || {}).muted);
+                        case "adminBan": return setFlag(d.id, "banned", !(profiles[d.id] || {}).banned);
+                        case "adminMod": return setRole(d.id, (profiles[d.id] || {}).role === "mod" ? "member" : "mod");
+                        case "adminAnnounce": return setAnnouncement($("ad-ann").value.trim());
                     }
-                    case "sugList": return loadSuggestionsList();
-                    case "sugListAdmin": return loadSuggestionsList();
-                    case "sugDel":
-                        await remove(R(`suggestions/${d.key}`));
-                        return loadSuggestionsList();
-                    case "openSuggestions": return openSuggestionsModal();
-                    case "adminMute": return setFlag(d.id, "muted", !(profiles[d.id] || {}).muted);
-                    case "adminBan": return setFlag(d.id, "banned", !(profiles[d.id] || {}).banned);
-                    case "adminMod": return setRole(d.id, (profiles[d.id] || {}).role === "mod" ? "member" : "mod");
-                    case "adminAnnounce": return setAnnouncement($("ad-ann").value.trim());
-                }
-            } catch (err) { toast("Erreur : " + err.message); }
-        });
+                } catch (err) { toast("Erreur : " + err.message); }
+            });
+        }
     </script>
 </body>
 </html>
